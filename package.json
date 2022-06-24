@@ -1,0 +1,26 @@
+{
+  "name": "gio-webjs-autotracker",
+  "version": "1.0.0",
+  "description": "GrowngIO官方 WebJS SDK，具备自动采集基本的用户行为事件，比如访问和行为数据等。目前支持代码埋点、无埋点、可视化圈选、热图等功能。",
+  "main": "index.js",
+  "scripts": {
+    "build": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/growingio/growingio-sdk-webjs-autotracker.git"
+  },
+  "keywords": [
+    "sdk",
+    "gio",
+    "web",
+    "javascript",
+    "autoracker"
+  ],
+  "author": "GrowingIO",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/growingio/growingio-sdk-webjs-autotracker/issues"
+  },
+  "homepage": "https://github.com/growingio/growingio-sdk-webjs-autotracker#readme"
+}
