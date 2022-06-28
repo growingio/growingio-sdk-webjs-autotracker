@@ -1,4 +1,4 @@
-GrowingIO Autotracker
+GrowingIO WebJS SDK (GrowingIO WebJS Autotracker)
 ======
 
 ![GrowingIO](https://www.growingio.com/vassets/images/home_v3/gio-logo-primary.svg)
