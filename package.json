@@ -1,6 +1,6 @@
 {
   "name": "gio-webjs-sdk-cdp",
-  "version": "3.8.0-rc.3",
+  "version": "3.8.0-rc.4",
   "description": "GrowngIO官方 WebJS SDK，具备自动采集基本的用户行为事件，比如访问和行为数据等。目前支持代码埋点、无埋点、可视化圈选、热图等功能。",
   "main": "gdp.js",
   "scripts": {
