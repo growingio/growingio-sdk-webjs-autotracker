@@ -1,0 +1,63 @@
+{
+  "name": "gio-web-autotracker",
+  "version": "4.0.0",
+  "description": "GrowngIO Web/H5/小程序内嵌页/Hybrid数据采集SDK",
+  "main": "index.ts",
+  "dependencies": {
+    "array-from": "^2.1.1",
+    "gio-web-nodes-parser": "^2.0.3",
+    "js-cookie": "^3.0.1",
+    "mitt": "^3.0.0",
+    "querystringify": "^2.2.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.17.9",
+    "@babel/preset-env": "^7.16.11",
+    "@babel/preset-typescript": "^7.16.7",
+    "@rollup/plugin-alias": "^3.1.9",
+    "@rollup/plugin-babel": "^5.3.1",
+    "@rollup/plugin-commonjs": "^22.0.0",
+    "@rollup/plugin-node-resolve": "^13.2.1",
+    "@rollup/plugin-replace": "^4.0.0",
+    "@rollup/plugin-terser": "^0.4.1",
+    "@rollup/plugin-typescript": "^8.3.2",
+    "@types/webpack-env": "^1.16.4",
+    "@typescript-eslint/eslint-plugin": "^5.29.0",
+    "@typescript-eslint/parser": "^5.29.0",
+    "eslint": "^8.14.0",
+    "eslint-config-prettier": "^8.5.0",
+    "eslint-plugin-prettier": "^4.0.0",
+    "finalhandler": "^1.2.0",
+    "jsdom": "^20.0.0",
+    "prettier": "^2.6.2",
+    "rollup": "^2.70.2",
+    "rollup-plugin-filesize": "^9.1.2",
+    "serve-static": "^1.15.0",
+    "tslib": "^2.4.0",
+    "typescript": "^4.6.3"
+  },
+  "scripts": {
+    "build:es": "bin/build/sdk-es.sh && bin/build/plugins-es.sh",
+    "build:plugins-es": "bin/build/plugins-es.sh",
+    "build:plugins": "bin/build/plugins-umd.sh",
+    "build:sdk-es": "bin/build/sdk-es.sh",
+    "build:sdk": "bin/build/sdk-umd.sh",
+    "build": "bin/build/sdk-umd.sh && bin/build/plugins-umd.sh",
+    "dev:es": "bin/dev/sdk-es.sh",
+    "dev:plugins-es": "bin/dev/plugins-es.sh",
+    "dev:plugins": "bin/dev/plugins-umd.sh",
+    "dev:sdk-es": "bin/dev/sdk-es.sh",
+    "dev:sdk": "bin/dev/sdk-umd.sh",
+    "dev": "bin/dev/sdk-umd.sh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://git.growingio.cn/growing/sdk/gio-web-autotracker"
+  },
+  "author": "anyi@startdt.com",
+  "license": "GNU General Public License v3.0",
+  "bugs": {
+    "url": "https://github.com/growingio/growingio-sdk-web-autotracker/issues"
+  },
+  "homepage": "https://github.com/growingio/growingio-sdk-web-autotracker#readme"
+}

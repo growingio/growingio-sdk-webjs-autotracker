@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "removeComments": true,
+    "allowSyntheticDefaultImports": true,
+    "allowUnreachableCode": true,
+    "baseUrl": "./",
+    "esModuleInterop": true,
+    "noImplicitAny": false,
+    "module": "ES2022",
+    "moduleResolution": "Node",
+    "preserveConstEnums": false,
+    "sourceMap": true,
+    "strict": false,
+    "lib": ["DOM", "ES5", "ES6", "ES2016"],
+    "target": "ES6",
+    "types": ["node", "webpack-env", "vitest/importMeta"],
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+  "exclude": ["./node_modules", "./dist"],
+  "include": [
+    "./src/*.ts",
+    "./src/**/*.ts",
+    "./src/**/**/*.ts",
+    "./*.d.ts",
+    "./typings/*.d.ts"
+  ],
+  "typedocOptions": {
+    "mode": "modules",
+    "out": "docs"
+  }
+}

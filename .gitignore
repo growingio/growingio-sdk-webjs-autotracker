@@ -1,0 +1,30 @@
+# dependencies
+/node_modules
+/**/node_modules
+/**/package-lock.json
+/**/yarn.lock
+/**/pnpm-lock.yaml
+
+# editor
+.idea
+.vscode
+.hbuilderx
+/**/.ide
+/**/.mini-ide
+/**/.vscode*
+/**/.cache
+
+# develop
+/src/adapters
+/src/extraPlugins
+/demos
+/test
+
+# misc
+.DS_Store
+
+# logs
+/*.log
+/npm-debug.log*
+/yarn-error.log
+junit.xml
