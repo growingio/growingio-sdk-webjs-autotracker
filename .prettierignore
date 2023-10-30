@@ -1,0 +1,18 @@
+# dependencies
+/node_modules
+/**/lz-string.js
+/typings
+
+# editor
+.idea
+.vscode
+
+# production
+/build
+/dist
+/test/pages/utils/*
+
+# misc
+.DS_Store
+
+# logs
