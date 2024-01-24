@@ -19,13 +19,15 @@ GrowingIO WebJS SDK (GrowingIO WebJS Autotracker)
 
 ## 开发
 
-1、检查环境，Nodejs 版本>=14，推荐使用 Nodejs v16。（推荐使用 nvm 进行 Nodejs 版本管理）推荐使用VSCode开发。
+### 检查环境
 
-2、安装依赖包
+Nodejs 版本>=14，推荐使用 Nodejs v16。（推荐使用 nvm 进行 Nodejs 版本管理）
 
-> npm install 或 pnpm install 或 yarn
+### 安装依赖包
 
-3、开发
+> npm install
+
+### 开发
 
 单独开发SDK
 > npm run dev
@@ -33,22 +35,37 @@ GrowingIO WebJS SDK (GrowingIO WebJS Autotracker)
 单独开发插件
 > npm run dev:plugins
 
-4、打包
+### 打包
 
 打包SDK和插件
 
-> npm run build // 默认打包umd格式
-> npm run bnuild:es // 指定打包esm格式
+默认打包umd格式
+> npm run build
+
+指定打包esm格式
+> npm run bnuild:es
 
 单独打包SDK
 
-> npm run build:sdk // 默认打包umd格式
-> npm run bnuild:sdk-es // 指定打包esm格式
+默认打包umd格式
+> npm run build:sdk
+
+指定打包esm格式
+> npm run bnuild:sdk-es
 
 单独打包插件
 
-> npm run build:plugins // 默认打包umd格式
-> npm run build:plugins-es // 指定打包esm格式
+默认打包umd格式
+> npm run build:plugins
+
+指定打包esm格式
+> npm run build:plugins-es
+
+## 浏览器兼容性
+
+| [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/edge/edge_48x48.png" alt="IE / Edge" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)<br/>IE / Edge | [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/firefox/firefox_48x48.png" alt="Firefox" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)<br/>Firefox | [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/chrome/chrome_48x48.png" alt="Chrome" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)<br/>Chrome | [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/safari/safari_48x48.png" alt="Safari" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)<br/>Safari | [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/opera/opera_48x48.png" alt="Opera" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)<br/>Opera |[<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/electron/electron_48x48.png" alt="Electron" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)<br/>Electron |
+| --------- | --------- | --------- | --------- | --------- | --------- |
+| IE11 / Edge > 15 major / Edge IE兼容模式| > 54 major | > 51 major | > 10 major | > 38 major | > 10 major |
 
 ## 开发插件
 
@@ -97,14 +114,10 @@ export default { name: 'gioDemoPlugin', method: GioDemoPlugin };
 
 ```
 
-## 浏览器兼容性
-
-| [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/edge/edge_48x48.png" alt="IE / Edge" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)<br/>IE / Edge | [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/firefox/firefox_48x48.png" alt="Firefox" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)<br/>Firefox | [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/chrome/chrome_48x48.png" alt="Chrome" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)<br/>Chrome | [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/safari/safari_48x48.png" alt="Safari" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)<br/>Safari | [<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/opera/opera_48x48.png" alt="Opera" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)<br/>Opera |[<img src="https://raw.githubusercontent.com/alrra/browser-logos/master/src/electron/electron_48x48.png" alt="Electron" width="24px" height="24px" />](http://godban.github.io/browsers-support-badges/)<br/>Electron |
-| --------- | --------- | --------- | --------- | --------- | --------- |
-| IE11 / Edge > 15 major / Edge IE兼容模式| > 54 major | > 51 major | > 10 major | > 38 major | > 10 major |
-
 ## 开源说明
 
-是的，我们开源了 WebJS 采集SDK的内容，欢迎大家一起学习和互相帮助。
+开源的源代码移除了性能监控、第三方厂商适配以及定制化开发的一些商业化内容，和自动化测试的相关代码。仅保留相对完整的SDK主要内容。
 
-另外，请注意开源协议。
+GrowingIO WebJS SDK 完全免费并开源，请注意仔细甄别。欢迎大家一起学习进步和互相帮助。
+
+Tips：请注意开源协议。

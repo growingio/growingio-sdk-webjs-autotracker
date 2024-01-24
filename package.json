@@ -1,8 +1,8 @@
 {
-  "name": "gio-web-autotracker",
+  "name": "gio-webjs-sdk",
   "version": "4.0.0",
   "description": "GrowngIO Web/H5/小程序内嵌页/Hybrid数据采集SDK",
-  "main": "index.ts",
+  "main": "dist/gdp.ts",
   "dependencies": {
     "array-from": "^2.1.1",
     "gio-web-nodes-parser": "^2.0.3",
@@ -52,12 +52,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://git.growingio.cn/growing/sdk/gio-web-autotracker"
+    "url": "https://github.com/growingio/growingio-sdk-webjs-autotracker"
   },
   "author": "anyi@startdt.com",
   "license": "GNU General Public License v3.0",
   "bugs": {
-    "url": "https://github.com/growingio/growingio-sdk-web-autotracker/issues"
+    "url": "https://github.com/growingio/growingio-sdk-webjs-autotracker/issues"
   },
-  "homepage": "https://github.com/growingio/growingio-sdk-web-autotracker#readme"
+  "homepage": "https://github.com/growingio/growingio-sdk-webjs-autotracker#readme"
 }
