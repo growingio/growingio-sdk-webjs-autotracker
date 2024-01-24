@@ -14,13 +14,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: actions/setup-node@v2
+      - uses: actions/setup-node@v1
         with:
           registry-url: https://registry.npmjs.org/
+          always-auth: true
       - name: Publish
-        run: npm publish --tag latest --non-interactive --access public
+        run: echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc && yarn publish --tag latest --non-interactive --access public
         env:
-          NPM_AUTH_TOKEN: ${{ secrets.NPM_AUTOMATION_TOKEN }}
+          NPM_CONFIG_USERCONFIG: ~/.npmrc
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTOMATION_TOKEN }}
   release:
     name: Auto Create Release
     runs-on: ubuntu-latest
