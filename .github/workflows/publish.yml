@@ -18,9 +18,9 @@ jobs:
         with:
           registry-url: https://registry.npmjs.org/
       - name: Publish
-        run: yarn publish --tag latest --non-interactive --access public
+        run: npm publish --tag latest --non-interactive --access public
         env:
-          NPM_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_AUTH_TOKEN: ${{ secrets.NPM_AUTOMATION_TOKEN }}
   release:
     name: Auto Create Release
     runs-on: ubuntu-latest
