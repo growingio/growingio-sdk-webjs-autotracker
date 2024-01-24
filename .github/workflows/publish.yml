@@ -6,8 +6,6 @@ name: Publish And Release
 on:
   push:
     tags:
-      - CDP-v*
-      - Saas-v*
       - v*
 
 jobs:
@@ -23,7 +21,7 @@ jobs:
       - name: Publish
         run: yarn publish --tag latest --non-interactive --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTOMATION_TOKEN }}
+          NPM_AUTH_TOKEN: ${{ secrets.NPM_AUTOMATION_TOKEN }}
   release:
     name: Auto Create Release
     runs-on: ubuntu-latest
