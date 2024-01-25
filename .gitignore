@@ -15,13 +15,25 @@
 /**/.cache
 
 # develop
-/src/adapters
-/src/extraPlugins
-/demos
-/test
+.gitlab
+test
+vitest.config.ts
+demos
+src/adapters
+dist/adapters
+src/extraPlugins
+dist/extraPlugins
+dist/performance
+bin/build/plugins-adapters.sh
+bin/build/plugins-extraPlugins.sh
+bin/build/plugins-normal.sh
+bin/dev/plugins-adapters.sh
+bin/dev/plugins-extraPlugins.sh
+bin/dev/plugins-normal.sh
 
 # misc
 .DS_Store
+.history
 
 # logs
 /*.log

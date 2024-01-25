@@ -113,7 +113,16 @@ const EVENT_TYPE: any = {
   change: 'VIEW_CHANGE'
 };
 export default class GioEventAutoTracking {
-  constructor(public growingIO: GrowingIOType) {}
+  constructor(public growingIO: GrowingIOType) {
+    this.growingIO.emitter?.on(
+      EMIT_MSG.OPTION_INITIALIZED,
+      ({ trackingId }) => {
+        if (trackingId === this.growingIO.trackingId) {
+          this.main();
+        }
+      }
+    );
+  }
 
   // 初始化监听
   main = () => {
@@ -139,6 +148,7 @@ export default class GioEventAutoTracking {
     if (
       !targetNode?.tagName ||
       targetNode?.tagName?.toLowerCase() === 'circle-shape' ||
+      targetNode?.tagName?.toLowerCase() === 'circle-page' ||
       targetNode?.tagName?.toLowerCase() === 'heatmap-page' ||
       targetNode?.id?.indexOf('__vconsole') > -1 ||
       targetNode?.id?.indexOf('__giokit') > -1
@@ -162,7 +172,7 @@ export default class GioEventAutoTracking {
     });
     // 创建事件
     nodesInfo.forEach((info: GIOWEBNODEINFO) => {
-      const { fullXpath, skeleton, xcontent, index, content, hyperlink } = info;
+      const { fullXpath } = info;
       // 忽略giokit和vconsole节点
       if (
         fullXpath.indexOf('#__giokit') < 0 &&
@@ -173,25 +183,42 @@ export default class GioEventAutoTracking {
           console.log('Action：', e.type, Date.now());
         }
         if (fullXpath) {
-          const {
-            dataStore: { eventContextBuilder, eventConverter }
-          } = this.growingIO;
-          const event = {
-            eventType: EVENT_TYPE[e.type],
-            element: [
-              {
-                xpath: skeleton,
-                xcontent,
-                textValue: content,
-                index,
-                hyperlink
-              }
-            ],
-            ...eventContextBuilder()
-          };
-          eventConverter(event);
+          this.buildInteractiveEvent(this.growingIO.trackingId, e, info);
+          // 子实例暂无法支持圈选，所以上报无埋点事件无意义
+          // dataStore.initializedTrackingIds.forEach((trackingId: string) => {
+          //   const tracker = dataStore.getTracker(trackingId);
+          //   if (tracker?.vdsConfig?.autotrack) {
+          //     this.buildInteractiveEvent(trackingId, e, info);
+          //   }
+          // });
         }
       }
     });
+  };
+
+  // 构建无埋点事件
+  buildInteractiveEvent = (
+    trackingId: string,
+    e: Event,
+    info: GIOWEBNODEINFO
+  ) => {
+    const {
+      dataStore: { eventContextBuilder, eventConverter }
+    } = this.growingIO;
+    const { skeleton, xcontent, index, content, hyperlink } = info;
+    const event = {
+      eventType: EVENT_TYPE[e.type],
+      element: [
+        {
+          xpath: skeleton,
+          xcontent,
+          textValue: content,
+          index,
+          hyperlink
+        }
+      ],
+      ...eventContextBuilder(trackingId)
+    };
+    eventConverter(event);
   };
 }

@@ -28,6 +28,12 @@ const EMBEDDED_ENUMS = {
   gioscreenheight: 'screenHeight',
   gioscreenwidth: 'screenWidth'
 };
+const VDS_EXTRA = [
+  'gioprojectid',
+  'giodatacollect',
+  'giodatasourceid',
+  'gioplatform'
+];
 const COM_EXTRA = [
   'giodatasourceid',
   'gioplatform',
@@ -61,56 +67,61 @@ export default class GioEmbeddedAdapter {
     this.ngqs = {};
     this.qsFrom = 'search';
     this.growingIO.emitter.on(EMIT_MSG.OPTION_INITIALIZED, () => {
-      this.growingIO.useEmbeddedInherit = this.main();
+      this.main();
     });
   }
 
   main = () => {
     const { projectId, appId } = this.growingIO.vdsConfig;
     const gqs = this.getGQS();
-    let useEmbeddedInherit = false;
     // 项目id和小程序appId一致时才允许打通数据
     if (
       this.qsFrom !== 'none' &&
       gqs.gioprojectid === projectId &&
       gqs.gioappid === appId
     ) {
+      this.growingIO.useEmbeddedInherit = true;
       // 在存储中存打通数据，防止刷新后丢失
       if (!isEmpty(gqs)) {
         this.growingIO.storage.setItem(gioSearchKey, qs.stringify(gqs));
       } else {
         this.growingIO.storage.removeItem(gioSearchKey);
       }
-
-      // 同步主要配置
-      if (has(gqs, 'giodatacollect')) {
-        this.growingIO.vdsConfig.dataCollect = includes(
-          ['true', true],
-          gqs.giodatacollect
-        );
-      }
-      // 打通后等初始化完成同步信息
-      this.growingIO.emitter?.on(EMIT_MSG.SDK_INITIALIZED, () => {
-        const {
-          userStore,
-          vdsConfig: { sessionExpires },
-          dataStore: { eventContextBuilderInst }
-        } = this.growingIO;
-        // 同步用户信息
-        USER_GQS.forEach((k: string) => {
-          userStore[EMBEDDED_ENUMS[k]] = gqs[k] ?? '';
-        });
-        // 以sessionExpires*0.8的时长刷新一次sessionId的有效时间，保证打通时不会因为超时s变session
-        window.setInterval(() => {
-          userStore.sessionId = gqs.gios;
-        }, sessionExpires * 0.8 * 60 * 1000);
-
-        // 打通后保存小程序的通用维度参数供事件构建
-        COM_EXTRA.forEach((k: string) => {
-          if (has(gqs, k)) {
-            eventContextBuilderInst.minpExtraParams[EMBEDDED_ENUMS[k]] = gqs[k];
+      // 同步主要配置,防止web的值与小程序值冲突导致发数逻辑错误
+      VDS_EXTRA.forEach((k: string) => {
+        if (has(gqs, k)) {
+          if (k === 'giodatacollect') {
+            this.growingIO.vdsConfig.dataCollect = includes(
+              ['true', true],
+              gqs.giodatacollect
+            );
+          } else {
+            this.growingIO.vdsConfig[EMBEDDED_ENUMS[k]] = gqs[k];
           }
-        });
+        }
+      });
+      // 打通后等初始化完成同步信息
+      const {
+        userStore,
+        vdsConfig: { sessionExpires },
+        dataStore: { eventContextBuilderInst },
+        trackingId
+      } = this.growingIO;
+      // 同步用户信息
+      userStore.setUid(gqs.giou);
+      userStore.setSessionId(trackingId, gqs.gios);
+      userStore.setUserId(trackingId, gqs.giocs1);
+      userStore.setUserKey(trackingId, gqs.giouserkey);
+      // 以sessionExpires*0.8的时长刷新一次sessionId的有效时间，保证打通时不会因为超时s变session
+      window.setInterval(() => {
+        userStore.setSessionId(trackingId, gqs.gios);
+      }, sessionExpires * 0.8 * 60 * 1000);
+
+      // 打通后保存小程序的通用维度参数供事件构建
+      COM_EXTRA.forEach((k: string) => {
+        if (has(gqs, k)) {
+          eventContextBuilderInst.minpExtraParams[EMBEDDED_ENUMS[k]] = gqs[k];
+        }
       });
 
       // 打通后h5中不允许再修改用户id
@@ -120,14 +131,10 @@ export default class GioEmbeddedAdapter {
       if (has(gqs, 'giodatacollect')) {
         this.growingIO.setOption = () => {};
       }
-
-      // 标记打通
-      useEmbeddedInherit = true;
     }
 
     // 地址栏重写
     this.gioURLRewrite();
-    return useEmbeddedInherit;
   };
 
   // 获取打通参数

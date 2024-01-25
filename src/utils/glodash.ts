@@ -17,7 +17,7 @@ export const isObject = (o: any): boolean =>
 export const isRegExp = (o: any): boolean => typeOf(o) === 'regexp';
 
 export const isFunction = (o: any): boolean =>
-  ['function', 'asyncfunction'].includes(typeOf(o));
+  includes(['function', 'asyncfunction'], typeOf(o));
 
 export const isArray = (o: any): boolean =>
   Array.isArray(o) && typeOf(o) === 'array';
@@ -280,7 +280,7 @@ export const isEqual = (o1: any, o2: any): boolean => {
     return false;
   } else {
     return !includes(
-      ks.map((k, i) => {
+      ks.map((k) => {
         if (isObject(o1[k])) {
           return isEqual(o1[k], o2[k]);
         } else {

@@ -1,9 +1,4 @@
-import {
-  initPreCheck,
-  paramExtraCheck,
-  paramsBaseCheck,
-  paramsEmptyCheck
-} from '@/utils/verifiers';
+import { initialCheck } from '@/utils/verifiers';
 import {
   arrayFrom,
   drop,
@@ -11,19 +6,22 @@ import {
   isArray,
   isEmpty,
   isString,
-  last,
   toString
 } from '@/utils/glodash';
-import { consoleText } from '@/utils/tools';
-import { HANDLERS, DEPRECATED_HANDLERS } from '@/constants/config';
+import { consoleText, niceCallback, niceTry } from '@/utils/tools';
+import {
+  HANDLERS,
+  DEPRECATED_HANDLERS,
+  INSTANCE_HANDLERS
+} from '@/constants/config';
 import GrowingIO from '@/core/growingIO';
 import EMIT_MSG from '@/constants/emitMsg';
 
 let gdp;
-const vds = window._gio_local_vds || 'vds';
-const namespace = window[vds]?.namespace ?? 'gdp';
+const vdsName = window._gio_local_vds || 'vds';
+const namespace = window[vdsName]?.namespace ?? 'gdp';
 (function () {
-  if (window[vds]?.gioSDKInstalled) {
+  if (window[vdsName]?.gioSDKInstalled) {
     gdp = window[namespace];
     consoleText(
       'SDK重复加载，请检查是否重复加载SDK或接入其他平台SDK导致冲突!',
@@ -31,64 +29,73 @@ const namespace = window[vds]?.namespace ?? 'gdp';
     );
     return;
   }
-  window[vds] = {
-    ...(window[vds] ?? {}),
+  window[vdsName] = {
+    ...(window[vdsName] ?? {}),
     gioSDKInstalled: true
   };
 
   const gioInstance: any = new GrowingIO();
 
   gdp = function () {
-    const actionName = arguments[0];
-    // 判断指令为字符串且配置项中允许调用且实例中存在的方法
+    const handlerName = arguments[0];
+    let trackingId = 'g0';
+    let handler = handlerName;
+    if (handlerName.indexOf('.') > -1) {
+      trackingId = handlerName.split('.')[0] ?? 'g0'; // 没有指定trackingId，默认为g0
+      handler = handlerName.split('.')[1];
+    }
     if (
-      isString(actionName) &&
-      includes(HANDLERS, actionName) &&
-      gioInstance[actionName]
+      isString(handler) &&
+      includes(HANDLERS, handler) &&
+      gioInstance[handler]
     ) {
       const args = drop(arrayFrom(arguments));
       // 初始化方法单独处理
-      if (actionName === 'init') {
-        const preCheckRes = initPreCheck(gioInstance);
-        if (!preCheckRes) return;
-        const emptyCheckRes = paramsEmptyCheck(args);
-        if (!emptyCheckRes) return;
-        const baseCheckRes = paramsBaseCheck(args);
-        if (!baseCheckRes) return;
-        const extraCheckRes = paramExtraCheck(args);
-        if (!extraCheckRes) return;
-
-        const { projectId } = baseCheckRes;
-        const { dataSourceId, appId, options } = extraCheckRes;
-        gioInstance.init(
-          {
-            ...options,
+      if (handler === 'init') {
+        const initialCheckRes: any = initialCheck(gioInstance, args);
+        if (initialCheckRes) {
+          const { projectId, dataSourceId, appId, userOptions } =
+            initialCheckRes;
+          // 返回初始化结果
+          return gioInstance.init({
+            ...userOptions,
             projectId,
             dataSourceId,
-            appId
-          },
-          last(args)
-        );
-      } else if (actionName === 'registerPlugins') {
+            appId,
+            trackingId
+          });
+        } else {
+          return false;
+        }
+      } else if (handler === 'registerPlugins') {
         gioInstance.registerPlugins(...args);
       } else if (gioInstance.gioSDKInitialized && gioInstance.vdsConfig) {
-        return gioInstance[actionName](...args);
+        if (includes(INSTANCE_HANDLERS, handler)) {
+          niceTry(() =>
+            gioInstance.handlerDistribute(trackingId, handler, args)
+          );
+        } else {
+          niceTry(() => gioInstance[handler](...args));
+        }
       } else {
         gioInstance.emitter.emit(EMIT_MSG.UN_EXECUTE_CALL, arguments);
         consoleText('SDK未初始化!', 'error');
       }
-    } else if (includes(DEPRECATED_HANDLERS, actionName)) {
-      consoleText(`方法 ${toString(actionName)} 已被弃用，请移除!`, 'warn');
+    } else if (includes(DEPRECATED_HANDLERS, handler)) {
+      consoleText(`方法 ${toString(handler)} 已被弃用，请移除!`, 'warn');
+    } else if (handler === 'canIUse') {
+      niceCallback(
+        arguments[2],
+        includes(HANDLERS, arguments[1]) && !!gioInstance[arguments[1]]
+      );
     } else {
-      consoleText(`不存在名为 ${toString(actionName)} 的方法调用!`, 'error');
+      consoleText(`不存在名为 ${toString(handler)} 的方法调用!`, 'error');
     }
-    window[vds] = {
-      ...window[vds],
+    window[vdsName] = {
+      ...window[vdsName],
       _gr_ignore_local_rule: window._gr_ignore_local_rule ?? false,
       gioSDKVersion: gioInstance.sdkVersion,
-      gioSDKFull: gioInstance.gioSDKFull,
-      canIUse: (functionName: string) =>
-        includes(HANDLERS, functionName) && gioInstance[functionName]
+      gioSDKFull: gioInstance.gioSDKFull
     };
   };
 
@@ -103,7 +110,7 @@ const namespace = window[vds]?.namespace ?? 'gdp';
   window.gdp.ef = ef;
 
   if (isArray(q) && !isEmpty(q)) {
-    Array.from(new Array(q.length)).forEach(() => {
+    arrayFrom(new Array(q.length)).forEach(() => {
       gdp.apply(null, q.shift());
     });
   }

@@ -230,6 +230,7 @@ export default class GioCompress {
     }
 
     // Flush the last char
+    // eslint-disable-next-line
     while (true) {
       context_data_val = context_data_val << 1;
       if (context_data_position === bitsPerChar - 1) {

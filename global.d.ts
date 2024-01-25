@@ -22,3 +22,7 @@ declare interface Window {
 
 declare let __JEST__: boolean;
 declare let __SDK_VERSION__: string;
+declare module '__GIO_PLUGIN_ENTRY__' {
+  let module: any;
+  export default module;
+}

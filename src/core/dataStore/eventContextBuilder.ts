@@ -9,22 +9,24 @@ class EventContextBuilder {
   }
 
   // 通用字段组装
-  main = () => {
-    const {
-      sdkVersion,
-      useEmbeddedInherit,
-      vdsConfig,
-      userStore,
-      dataStore,
-      trackingId
-    } = this.growingIO;
+  main = (trackingId?: string) => {
+    // 预置事件或者默认就是发给主实例的事件不需要传trackingId
+    if (!trackingId) {
+      trackingId = this.growingIO.trackingId;
+    }
+    const { sdkVersion, useEmbeddedInherit, userStore, dataStore } =
+      this.growingIO;
     const { path, query } = dataStore.currentPage;
+    const { vdsConfig } = this.growingIO.dataStore.getTracker(trackingId);
     // 事件主要内容组装
     let context: any = {
       appVersion: vdsConfig.version,
       dataSourceId: vdsConfig.dataSourceId,
-      deviceId: userStore.uid,
-      domain: useEmbeddedInherit ? vdsConfig.appId : window.location.host,
+      deviceId: userStore.getUid(),
+      domain:
+        trackingId === this.growingIO.trackingId && useEmbeddedInherit
+          ? vdsConfig.appId
+          : window.location.host,
       language: navigator.language,
       path,
       platform: vdsConfig.platform,
@@ -33,15 +35,15 @@ class EventContextBuilder {
       screenHeight: window.screen.height,
       screenWidth: window.screen.width,
       sdkVersion,
-      sessionId: userStore.sessionId,
+      sessionId: userStore.getSessionId(trackingId),
       timestamp: +Date.now(),
       timezoneOffset: new Date().getTimezoneOffset(),
       title: niceTry(() => document.title.slice(0, 255)) ?? '',
-      userId: userStore.userId
+      userId: userStore.getUserId(trackingId)
     };
     // 开启IDMapping的时候才把userKey带上
     if (vdsConfig.idMapping) {
-      context.userKey = userStore.userKey;
+      context.userKey = userStore.getUserKey(trackingId);
     }
 
     // 过滤忽略字段（打通时忽略字段可能会失效，字段会继续被小程序覆盖）
@@ -53,13 +55,17 @@ class EventContextBuilder {
 
     /**
      * 以下字段可以忽略打通时的强制赋值(忽略字段时，原先web产生的context中有值的取原context值，没有则该字段在事件中为空会被舍弃)
-     * ['domain', 'platform',
+     * ['domain', 'platform', // 就告诉客户只能传这2个，剩下的虽然有能力也忽略，但是尽量不告诉，可以在小程序不加就完了
      * 注意dataSourceId慎用，单独搞web项目的时候会导致web只有page没有visit，跳出率计算有问题
      * 'dataSourceId', 'appChannel', 'deviceBrand', 'deviceType', 'language', 'networkState', 'deviceModel'
      *'operatingSystem', 'platformVersion', 'screenHeight', 'screenWidth']
      */
     // 小程序打通时，优先使用打通的字段
-    if (useEmbeddedInherit && !isEmpty(this.minpExtraParams)) {
+    if (
+      trackingId === this.growingIO.trackingId &&
+      useEmbeddedInherit &&
+      !isEmpty(this.minpExtraParams)
+    ) {
       const originContext = { ...context };
       forEach({ ...context, ...this.minpExtraParams }, (_, k) => {
         if (includes(vdsConfig.embeddedIgnore, k)) {
@@ -74,9 +80,7 @@ class EventContextBuilder {
         }
       });
     }
-
     context.trackingId = trackingId;
-    // 此时可能存在数据为空的字段，在数据组装完成后由转换方法移除空值字段
     return context;
   };
 }

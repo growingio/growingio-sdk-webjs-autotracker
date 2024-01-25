@@ -55,7 +55,7 @@ export const niceCallback = (cb: Function, cbv?: any) => {
 };
 
 // 将字符串转为hash
-export const hashCode = (string) => {
+export const hashCode = (string: string, abs = false) => {
   let hash = 0;
   if (isEmpty(string) || typeof string === 'boolean') {
     return hash;
@@ -67,11 +67,12 @@ export const hashCode = (string) => {
     hash = hash & hash; //Convert to 32bit integer
     i++;
   }
-  return hash;
+  return abs ? Math.abs(hash) : hash;
 };
 
 // 检查sendBeacon是否支持
 export const supportBeacon = (): boolean => {
+  // eslint-disable-next-line
   const hasBeacon = !!window?.navigator?.sendBeacon;
   const ua = window.navigator.userAgent;
   if (ua.match(/(iPad|iPhone|iPod)/g)) {
@@ -99,18 +100,6 @@ export const isSafari = () => {
   const chromeReg = /chrome\/(\d+\.\d+)/i;
   return safariReg.test(ua) && !chromeReg.test(ua);
 };
-
-// 判断是否为IE浏览器
-export const isIE = () =>
-  // 通用判断
-  !!window.ActiveXObject ||
-  'ActiveXObject' in window ||
-  // IE11以下的判断
-  (navigator.userAgent.indexOf('compatible') > -1 &&
-    navigator.userAgent.indexOf('MSIE') > -1) ||
-  // IE11的判断
-  (navigator.userAgent.indexOf('Trident') > -1 &&
-    navigator.userAgent.indexOf('rv:11.0') > -1);
 
 // 判断是否为爬虫环境
 export const isBot = () => {
@@ -241,13 +230,24 @@ export const getDynamicAttributes = (properties: any) => {
   return properties;
 };
 
+// 获取vds
+export const getVds = () => {
+  const vdsName = window._gio_local_vds || 'vds';
+  return window[vdsName] ?? {};
+};
+
 // 获取gio方法
 export const getGioFunction = () => {
-  const vds = window._gio_local_vds || 'vds';
-  const namespace = window[vds]?.namespace ?? 'gdp';
+  const namespace = getVds()?.namespace ?? 'gdp';
   if (isFunction(window[namespace])) {
     return window[namespace];
   } else {
     return window.gdp ?? window.gio ?? function () {};
   }
+};
+
+// 获取主实例的实例id
+export const getMainTrackingId = () => {
+  const vds = getVds();
+  return vds.trackingId ?? 'g0';
 };

@@ -1,12 +1,11 @@
-// IP地址正则
-export const IPReg =
-  /^((2(5[0-5]|[0-4]\d))|[0-1]?\d{1,2})(\.((2(5[0-5]|[0-4]\d))|[0-1]?\d{1,2})){3}/i;
 // 特殊顶级域名正则
-export const SpecialTopDomainReg =
+export const SPECIAL_TOP_DOMAIN_REG =
   /^(\.ac\.|\.br\.|\.co\.|\.com\.|\.edu\.|\.gov\.|\.org\.|\.net\.)/;
 // 曝光事件属性正则
-export const IMPAttributesReg = /^data-gio-track-[a-z]+$/i;
+export const IMP_ATTRIBUTES_REG = /^data-gio-track-[a-z]+$/i;
 // 曝光事件dataset属性正则
-export const IMPDatasetReg = /^gioTrack(.+)/;
+export const IMP_DATASET_REG = /^gioTrack(.+)/;
 // 埋点事件名正则
-export const EventNameReg = /^[a-zA-Z][a-zA-Z0-9_]{0,99}$/;
+export const EVENT_NAME_REG = /^[a-zA-Z][a-zA-Z0-9_]{0,99}$/;
+// sessionKey正则
+export const SESSION_KEY_REG = /.+_gdp_session_id_.{36}/;

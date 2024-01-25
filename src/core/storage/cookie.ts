@@ -31,10 +31,8 @@ class CookieStorage implements StorageType {
       expires: end
         ? new Date(end)
         : new Date(
-            new Date().getFullYear() + 3,
-            new Date().getMonth(),
-            new Date().getDay()
-          ),
+            new Date(new Date().toDateString()).getTime() + 86400000 * 400
+          ), // 默认400天
       domain: this.domain,
       path: '/'
     });

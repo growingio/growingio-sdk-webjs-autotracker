@@ -75,7 +75,10 @@ class Page {
 
   // 页面触发事件
   pageListener = () => {
-    const { hashtag } = this.growingIO.vdsConfig;
+    const {
+      vdsConfig: { hashtag },
+      dataStore
+    } = this.growingIO;
     let nowHref = window.location.href;
     let compareHref = this.lastHref;
     // 关闭hashrtag时使用无hash的地址进行比对
@@ -87,7 +90,12 @@ class Page {
       // 解析页面信息
       this.parsePage();
       // 发送page事件
-      this.buildPageEvent();
+      dataStore.initializedTrackingIds.forEach((trackingId: string) => {
+        const tracker = dataStore.getTracker(trackingId);
+        if (tracker?.vdsConfig?.trackPage) {
+          this.buildPageEvent(trackingId);
+        }
+      });
     }
   };
 
@@ -124,13 +132,13 @@ class Page {
   };
 
   // 构建页面访问事件
-  buildPageEvent = (props?: any) => {
+  buildPageEvent = (trackingId: string, props?: any) => {
     const {
       dataStore: { eventContextBuilder, eventConverter }
     } = this.growingIO;
     let event = {
       eventType: 'PAGE',
-      ...eventContextBuilder(),
+      ...eventContextBuilder(trackingId),
       protocolType: location.protocol.substring(
         0,
         location.protocol.length - 1

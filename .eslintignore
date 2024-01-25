@@ -9,6 +9,7 @@
 .idea
 .vscode
 .hbuilderx
+.eslintrc.js
 /**/.ide
 /**/.mini-ide
 /**/.vscode*

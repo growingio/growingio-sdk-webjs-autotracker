@@ -3,7 +3,9 @@ module.exports = {
   extends: [
     'eslint:recommended',
     'plugin:@typescript-eslint/recommended',
-    'plugin:prettier/recommended'
+    'plugin:prettier/recommended',
+    'plugin:typescript-compat/recommended',
+    'plugin:compat/recommended'
   ],
   globals: {
     __JEST__: 'readonly',
@@ -13,18 +15,19 @@ module.exports = {
     window: true
   },
   parser: '@typescript-eslint/parser',
-  parserOptions: { ecmaVersion: 2018, sourceType: 'module' },
-  plugins: ['prettier'],
+  parserOptions: { project: './tsconfig.json', ecmaVersion: 2018, sourceType: 'module' },
+  plugins: ['prettier', 'compat'],
   rules: {
     '@typescript-eslint/adjacent-overload-signatures': 'off',
     '@typescript-eslint/ban-ts-comment': 'off',
     '@typescript-eslint/ban-types': 'off',
     '@typescript-eslint/explicit-module-boundary-types': 'off',
-    '@typescript-eslint/no-empty-function': 'warn',
+    '@typescript-eslint/no-empty-function': 'off',
     '@typescript-eslint/no-explicit-any': 'off',
     '@typescript-eslint/no-this-alias': 'off',
     '@typescript-eslint/no-var-requires': 'off',
     'comma-dangle': ['error', 'never'],
+    'compat/compat': 'warn',
     'default-case': ['warn', { commentPattern: '^no default$' }], //要求 Switch 语句中有 Default
     'dot-location': ['warn', 'property'], // 强制在点号之前或之后换行
     'import/no-unresolved': 'off',

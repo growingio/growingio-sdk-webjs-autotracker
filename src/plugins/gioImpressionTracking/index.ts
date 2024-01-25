@@ -1,6 +1,5 @@
 import EMIT_MSG from '@/constants/emitMsg';
 import { GrowingIOType } from '@/types/growingIO';
-import { isIE } from '@/utils/tools';
 import {
   arrayFrom,
   has,
@@ -12,9 +11,9 @@ import {
 } from '@/utils/glodash';
 import { addListener, consoleText, limitObject, niceTry } from '@/utils/tools';
 import {
-  EventNameReg,
-  IMPAttributesReg,
-  IMPDatasetReg
+  EVENT_NAME_REG,
+  IMP_ATTRIBUTES_REG,
+  IMP_DATASET_REG
 } from '@/constants/regex';
 
 /**
@@ -28,12 +27,7 @@ export default class GioImpressionTracking {
   private sentImps: any;
   constructor(public growingIO: GrowingIOType) {
     this.sentImps = {};
-    if (isIE()) {
-      consoleText(
-        'IE浏览器不支持半自动埋点，gioImpressionTracking已自动关闭！',
-        'warn'
-      );
-    } else {
+    if (window.IntersectionObserver && window.MutationObserver) {
       this.initIntersectionObserver();
       addListener(
         document,
@@ -47,13 +41,23 @@ export default class GioImpressionTracking {
           once: true
         }
       );
-      this.growingIO.emitter?.on(EMIT_MSG.SDK_INITIALIZED, () =>
-        this.main('emitter')
+      this.growingIO.emitter?.on(
+        EMIT_MSG.OPTION_INITIALIZED,
+        ({ trackingId }) => {
+          if (trackingId === this.growingIO.trackingId) {
+            this.main('emitter');
+          }
+        }
       );
       addListener(window, 'unload', () => {
         this.intersectionObserver?.disconnect();
         this.mutationObserver?.disconnect();
       });
+    } else {
+      consoleText(
+        '当前浏览器不支持半自动埋点，gioImpressionTracking已自动关闭！',
+        'warn'
+      );
     }
   }
 
@@ -74,27 +78,30 @@ export default class GioImpressionTracking {
 
   // 初始化曝光（视窗相交）监听
   initIntersectionObserver = () => {
+    // eslint-disable-next-line
     this.intersectionObserver = new IntersectionObserver((entries) => {
       if (!isEmpty(entries)) {
         entries.map((entry: any) => {
-          const { dataset } = entry.target;
+          const { dataset, id } = entry.target;
           // 相交率大于0说明出现在可视范围内
           if (entry.intersectionRatio > 0) {
             const { eventName, properties } =
               this.getImpressionProperties(dataset);
             // 曝光类型判断，单次曝光的需要有id和gio-imp-type字段
-            const sentId = dataset.id;
-            if (sentId) {
-              if (dataset.gioImpType === 'once' && has(this.sentImps, sentId)) {
+            if (id) {
+              if (dataset.gioImpType === 'once' && has(this.sentImps, id)) {
                 return;
               } else {
-                this.sentImps[sentId] = { eventName, properties };
+                this.sentImps[id] = { eventName, properties };
               }
             }
             // 有埋点事件名就可以上报埋点
             if (eventName) {
               // 要直接构建custom事件，不要去调用埋点插件的方法，万一插件没有加载就发不出去了
-              this.buildImpEvent({ eventName, properties });
+              this.buildImpEvent(
+                { eventName, properties },
+                dataset.gioImpSendto || this.growingIO.trackingId
+              );
             }
           }
         });
@@ -105,7 +112,7 @@ export default class GioImpressionTracking {
   // 初始化Dom更改监听
   initMutationObserver = () => {
     if (this.mutationObserver) {
-      return false;
+      this.mutationObserver?.disconnect();
     }
     // 静态（已定义）的监听
     const impNodes = document.querySelectorAll('[data-gio-imp-track]');
@@ -114,26 +121,30 @@ export default class GioImpressionTracking {
     });
     // 动态设置的监听
     this.mutationObserver = new MutationObserver((mutationList: any[]) => {
-      return mutationList.map((mutRecord: any) => {
+      mutationList.map((mutRecord: any) => {
+        // 给节点动态加属性
         if (mutRecord.type === 'attributes') {
-          const { dataset } = mutRecord.target;
-          if (dataset.gioImpTrack) {
-            return this.intersectionObserver?.observe(mutRecord.target);
+          if (mutRecord.target.dataset?.gioImpTrack) {
+            this.intersectionObserver?.observe(mutRecord.target);
           }
         }
       });
     });
+    // eslint-disable-next-line
     this.mutationObserver.observe(document.body, {
       attributes: true,
       childList: true,
       subtree: true,
       attributeOldValue: true,
       attributeFilter: [
+        // 埋点名
         'data-gio-imp-track',
         // 新方式
         'data-gio-imp-attrs',
         // 老方式
-        IMPAttributesReg
+        IMP_ATTRIBUTES_REG,
+        // 指定发送实例
+        'data-gio-imp-sendto'
       ]
     });
   };
@@ -160,7 +171,7 @@ export default class GioImpressionTracking {
       // imp写法一
       for (const key in dataSet) {
         let normKey;
-        const matchArr = key.match(IMPDatasetReg);
+        const matchArr = key.match(IMP_DATASET_REG);
         if (matchArr) {
           normKey = lowerFirst(matchArr[1]);
           if (normKey !== 'track') {
@@ -173,7 +184,8 @@ export default class GioImpressionTracking {
     data.properties = limitObject(data.properties);
     // 校验eventName
     if (
-      !EventNameReg.test(data.eventName) ||
+      !EVENT_NAME_REG.test(data.eventName) ||
+      // eslint-disable-next-line
       Number.isInteger(Number(head(data.eventName.split(''))))
     ) {
       data.eventName = null;
@@ -183,18 +195,21 @@ export default class GioImpressionTracking {
   };
 
   // 创建半自动曝光事件
-  buildImpEvent = (dataProperties: any) => {
+  buildImpEvent = (dataProperties: any, trackingId: string) => {
     const { eventName, properties } = dataProperties;
     const {
-      dataStore: { eventContextBuilder, eventConverter }
+      dataStore: { eventContextBuilder, eventConverter, getTracker }
     } = this.growingIO;
-    const event = {
-      eventType: 'CUSTOM',
-      eventName,
-      attributes: properties,
-      ...eventContextBuilder(),
-      customEventType: 0
-    };
-    eventConverter(event);
+    // 发曝光之前要查询对应的tracker是否存在
+    if (getTracker(trackingId)) {
+      const event = {
+        eventType: 'CUSTOM',
+        eventName,
+        attributes: properties,
+        ...eventContextBuilder(trackingId),
+        customEventType: 0
+      };
+      eventConverter(event);
+    }
   };
 }

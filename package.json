@@ -1,11 +1,11 @@
 {
   "name": "gio-webjs-sdk",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "description": "GrowngIO Web/H5/小程序内嵌页/Hybrid数据采集SDK",
-  "main": "dist/gdp.ts",
+  "main": "dist/gdp.js",
   "dependencies": {
     "array-from": "^2.1.1",
-    "gio-web-nodes-parser": "^2.0.3",
+    "gio-web-nodes-parser": "^2.0.8",
     "js-cookie": "^3.0.1",
     "mitt": "^3.0.0",
     "querystringify": "^2.2.0"
@@ -23,10 +23,12 @@
     "@rollup/plugin-typescript": "^8.3.2",
     "@types/webpack-env": "^1.16.4",
     "@typescript-eslint/eslint-plugin": "^5.29.0",
-    "@typescript-eslint/parser": "^5.29.0",
+    "@typescript-eslint/parser": "^5.62.0",
     "eslint": "^8.14.0",
     "eslint-config-prettier": "^8.5.0",
+    "eslint-plugin-compat": "^4.2.0",
     "eslint-plugin-prettier": "^4.0.0",
+    "eslint-plugin-typescript-compat": "^1.0.2",
     "finalhandler": "^1.2.0",
     "jsdom": "^20.0.0",
     "prettier": "^2.6.2",
@@ -34,7 +36,7 @@
     "rollup-plugin-filesize": "^9.1.2",
     "serve-static": "^1.15.0",
     "tslib": "^2.4.0",
-    "typescript": "^4.6.3"
+    "typescript": "^4.9.5"
   },
   "scripts": {
     "build:es": "bin/build/sdk-es.sh && bin/build/plugins-es.sh",
@@ -42,13 +44,14 @@
     "build:plugins": "bin/build/plugins-umd.sh",
     "build:sdk-es": "bin/build/sdk-es.sh",
     "build:sdk": "bin/build/sdk-umd.sh",
-    "build": "bin/build/sdk-umd.sh && bin/build/plugins-umd.sh",
+    "build": "npm run lint && bin/build/sdk-umd.sh && bin/build/plugins-umd.sh",
     "dev:es": "bin/dev/sdk-es.sh",
     "dev:plugins-es": "bin/dev/plugins-es.sh",
     "dev:plugins": "bin/dev/plugins-umd.sh",
     "dev:sdk-es": "bin/dev/sdk-es.sh",
     "dev:sdk": "bin/dev/sdk-umd.sh",
-    "dev": "bin/dev/sdk-umd.sh"
+    "dev": "bin/dev/sdk-umd.sh",
+    "lint": "eslint src"
   },
   "repository": {
     "type": "git",
@@ -59,5 +62,15 @@
   "bugs": {
     "url": "https://github.com/growingio/growingio-sdk-webjs-autotracker/issues"
   },
-  "homepage": "https://github.com/growingio/growingio-sdk-webjs-autotracker#readme"
+  "homepage": "https://github.com/growingio/growingio-sdk-webjs-autotracker#readme",
+  "browserslist": [
+    "IE 11",
+    "Android >= 4.4",
+    "iOS >= 9",
+    "Chrome >= 51",
+    "Firefox > 54",
+    "Safari >= 10",
+    "Opera >= 38",
+    "Edge >= 15"
+  ]
 }

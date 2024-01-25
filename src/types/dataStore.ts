@@ -14,13 +14,20 @@ export interface UserOptions {
   ignoreFields?: string[];
   originalSource?: boolean;
   penetrateHybrid?: boolean;
+  performance?: {
+    monitor?: boolean;
+    exception?: boolean;
+    network?: boolean | { exclude?: RegExp | string | any[] };
+  };
   platform?: string;
+  requestTimeout?: number;
   sendType?: 'beacon' | 'xhr' | 'image';
   serverUrl?: string;
   sessionExpires?: number;
   storageType?: 'cookie' | 'localstorage';
   touch?: boolean;
   trackBot?: boolean;
+  trackPage?: boolean;
   version?: string;
 }
 
@@ -28,27 +35,39 @@ export interface OriginOptions extends UserOptions {
   projectId: string;
   dataSourceId?: string;
   appId: string;
+  trackingId: string;
 }
 
+export type StorageKeyType =
+  | 'gsid'
+  | 'originalSource'
+  | 'sentSign'
+  | 'sessionId'
+  | 'userId'
+  | 'userKey'
+  | 'gioId';
+
 export interface DataStoreType {
-  seqStorageIdName: string;
-  visitStorageName: string;
-  originalSourceName: string;
-  gsid: number;
+  initializedTrackingIds: string[];
+  getGsid: (trackingId: string) => string | undefined;
+  setGsid: (trackingId: string, value: number) => void;
   currentPage: PageType;
   eventContextBuilderInst: any;
-  eventContextBuilder: () => any;
-  setOriginalSource: () => void;
-  getOriginalSource: () => any;
-  initOptions: (userOptions: OriginOptions) => void;
-  setOption: (k: string, v: any) => boolean;
-  getOption: (k?: string) => OriginOptions;
-  sendVisit: (forceSend?: boolean) => void;
+  getTracker: (trackingId: string) => any;
+  getKeyPrefix: (trackingId: string) => string;
+  getStorageKey: (trackingId: string, name: StorageKeyType) => string;
+  eventContextBuilder: (trackingId?: string) => any;
+  setOriginalSource: (trackingId: string) => void;
+  getOriginalSource: (trackingId: string) => any;
+  initTrackerOptions: (userOptions: OriginOptions) => OriginOptions;
+  initOptions: (userOptions: OriginOptions) => OriginOptions;
+  setOption: (trackingId: string, k: string, v: any) => boolean;
+  getOption: (trackingId: string, k?: string) => OriginOptions;
+  sendVerifiedVisit: (trackingId: string, forceSend?: boolean) => void;
+  sendVerifiedPage: (trackingId: string, forceParse?: boolean) => void;
   buildVisitEvent: (props?: any) => void;
-  sendPage: (forceParse?: boolean) => void;
   eventConverter?: (event: any) => void;
   lastPageEvent?: any;
-  initialDataSourceId: string;
   generalProps: any;
   trackTimers: any;
 }

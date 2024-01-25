@@ -1,6 +1,6 @@
 import { consoleText } from '@/utils/tools';
 import { includes, isEmpty, last } from '@/utils/glodash';
-import { SpecialTopDomainReg } from '@/constants/regex';
+import { SPECIAL_TOP_DOMAIN_REG } from '@/constants/regex';
 import Cookies from 'js-cookie';
 import CookieStorage from './cookie';
 import LocalStorage from './local';
@@ -19,39 +19,41 @@ const domainParse = (originDomian: string) => {
       (isNaN(Number(lspt)) || Number(lspt) < 0 || Number(lspt) > 255)
     ) {
       const domain2length = `.${splits.slice(-2).join('.')}`;
-      if (!SpecialTopDomainReg.test(domain2length)) {
+      if (!SPECIAL_TOP_DOMAIN_REG.test(domain2length)) {
         dms.push(domain2length);
       } else {
         possibleSpecialDomain = domain2length;
       }
       const domain3length = `.${splits.slice(-3).join('.')}`;
       if (
-        !SpecialTopDomainReg.test(domain3length) &&
-        !dms.includes(domain3length)
+        !SPECIAL_TOP_DOMAIN_REG.test(domain3length) &&
+        !includes(dms, domain3length)
       ) {
         dms.push(domain3length);
       }
       const domain4length = `.${splits.slice(-4).join('.')}`;
       if (
-        !SpecialTopDomainReg.test(domain4length) &&
-        !dms.includes(domain4length)
+        !SPECIAL_TOP_DOMAIN_REG.test(domain4length) &&
+        !includes(dms, domain4length)
       ) {
         dms.push(domain4length);
       }
     }
-  } catch (error) {}
+  } catch (error) {
+    consoleText(error, 'error');
+  }
   return dms;
 };
 
 // 获取可以设进cookie的域，优先是顶级域名，其次是子域名
 const getActiveDomain = (domains: string[]) => {
   let activeDomain = '';
-  domains.every((d) => {
+  domains.some((d) => {
     if (testCookie(d)) {
       activeDomain = d;
-      return false;
-    } else {
       return true;
+    } else {
+      return false;
     }
   });
   return activeDomain;
@@ -101,6 +103,7 @@ const storageAvailable = () => {
   }
 };
 
+// 处理原来特殊顶级域名存储域错误问题的兼容逻辑
 const domainConverter = (
   globalStorage: any,
   previousDomain: string,

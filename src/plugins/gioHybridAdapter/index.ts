@@ -52,22 +52,24 @@ const WINDOW_EVENT = [
 export default class GioHybridAdapter {
   private penetrateHybrid = true;
   private hasHybridBridge: boolean;
-  private hybridConfig: { projectId: string };
+  public hybridConfig: { projectId: string; dataSourceId: string };
   public onSendBefore: any;
 
   constructor(public growingIO: GrowingIOType) {
     const { emitter, utils } = this.growingIO;
     ut = utils;
-    emitter.on(EMIT_MSG.OPTION_INITIALIZED, this.onOptionsInit);
-    this.growingIO.emitter?.on(EMIT_MSG.SDK_INITIALIZED, () => {
-      if (window.GrowingWebViewJavascriptBridge) {
-        const self = this;
-        window.GrowingWebViewJavascriptBridge.getDomTree = function () {
-          if (arguments.length >= 4) {
-            return self._getDomTree.apply(this, arguments);
-          }
-        };
-        this._addDomChangeListener();
+    emitter.on(EMIT_MSG.OPTION_INITIALIZED, ({ trackingId }) => {
+      if (trackingId === this.growingIO.trackingId) {
+        this.onOptionsInit();
+        if (window.GrowingWebViewJavascriptBridge) {
+          const self = this;
+          window.GrowingWebViewJavascriptBridge.getDomTree = function () {
+            if (arguments.length >= 4) {
+              return self._getDomTree.apply(this, arguments);
+            }
+          };
+          this._addDomChangeListener();
+        }
       }
     });
   }
@@ -90,24 +92,26 @@ export default class GioHybridAdapter {
     if (this.growingIO.useHybridInherit) {
       emitter?.on(
         EMIT_MSG.SET_USERID,
-        ({ newUserId, oldUserId, userKey }: any) => {
-          if (this.penetrateHybrid) {
-            // 有旧值且新传入的值为空视为清除
-            if (!newUserId && oldUserId) {
-              if (userKey) {
-                this._clearNativeUserIdAndUserKey();
+        ({ newUserId, oldUserId, userKey, trackingId }: any) => {
+          if (trackingId === this.growingIO.trackingId) {
+            if (this.penetrateHybrid) {
+              // 有旧值且新传入的值为空视为清除
+              if (!newUserId && oldUserId) {
+                if (userKey) {
+                  this._clearNativeUserIdAndUserKey();
+                } else {
+                  this._clearNativeUserId();
+                }
               } else {
-                this._clearNativeUserId();
-              }
-            } else {
-              // 其他情况视为setUserId
-              if (userKey) {
-                this._setNativeUserIdAndUserKey(
-                  toString(newUserId),
-                  toString(userKey)
-                );
-              } else {
-                this._setNativeUserId(toString(newUserId));
+                // 其他情况视为setUserId
+                if (userKey) {
+                  this._setNativeUserIdAndUserKey(
+                    toString(newUserId),
+                    toString(userKey)
+                  );
+                } else {
+                  this._setNativeUserId(toString(newUserId));
+                }
               }
             }
           }
@@ -115,17 +119,19 @@ export default class GioHybridAdapter {
       );
       emitter?.on(
         EMIT_MSG.SET_USERKEY,
-        ({ newUserKey, oldUserKey, userId }: any) => {
-          if (this.penetrateHybrid) {
-            // 有旧值且新传入的值为空视为清除
-            if (!newUserKey && oldUserKey) {
-              this._clearNativeUserIdAndUserKey();
-            } else {
-              // 其他情况视为setUserKey，有userId就带上设值，没有userId就算调用了下面的方法native端也不会处理
-              this._setNativeUserIdAndUserKey(
-                toString(userId),
-                toString(newUserKey)
-              );
+        ({ newUserKey, oldUserKey, userId, trackingId }: any) => {
+          if (trackingId === this.growingIO.trackingId) {
+            if (this.penetrateHybrid) {
+              // 有旧值且新传入的值为空视为清除
+              if (!newUserKey && oldUserKey) {
+                this._clearNativeUserIdAndUserKey();
+              } else {
+                // 其他情况视为setUserKey，有userId就带上设值，没有userId就算调用了下面的方法native端也不会处理
+                this._setNativeUserIdAndUserKey(
+                  toString(userId),
+                  toString(newUserKey)
+                );
+              }
             }
           }
         }
@@ -160,9 +166,15 @@ export default class GioHybridAdapter {
     return bridgeInitialized;
   };
 
-  sendBeforeListener = ({ requestData }: { requestData: EVENT }) => {
+  sendBeforeListener = ({
+    requestData,
+    trackingId
+  }: {
+    requestData: EVENT;
+    trackingId: string;
+  }) => {
     // 存在桥就要进行转发
-    if (this.hasHybridBridge) {
+    if (trackingId === this.growingIO.trackingId && this.hasHybridBridge) {
       // 数据类型处理
       const nativeData = this.processAttributes({ ...requestData });
       // 符合转发条件的事件类型
@@ -250,10 +262,15 @@ export default class GioHybridAdapter {
     });
     // @ts-ignore
     const elements = gioHybridNode
-      .trackNodes(root ?? document.body, {
-        isContainer: false,
-        zLevel: 0
-      })
+      .trackNodes(
+        // eslint-disable-next-line
+        root ?? document.body,
+        {
+          isContainer: false,
+          zLevel: 0
+        },
+        false
+      )
       .map((o: GIOHYBRIDNODEINFO) => {
         // 移动端不需要这两个字段。iOS会报错
         unset(o, ['originNode', 'peerNodes']);
@@ -280,6 +297,7 @@ export default class GioHybridAdapter {
       };
     };
     mutationObserver = new MutationObserver(listener('mutation'));
+    // eslint-disable-next-line
     mutationObserver.observe(document.body, {
       attributes: true,
       characterData: true,

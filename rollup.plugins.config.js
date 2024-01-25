@@ -16,7 +16,7 @@ const processENV = process.argv[process.argv.length - 1]
 // 获取优先的格式名（优先的格式名为默认gdp.js，非优先的为gdp.格式.js）
 const formatPriority = processENV[0];
 // 获取是否打包全量插件
-const folder = processENV[1] ?? 'plugins';
+const folder = processENV[1] ?? 'all';
 // 控制台打印当前打包的环境
 console.log(
   `Packaging Format ${formatPriority === 'es' ? 'esm' : 'umd'
@@ -26,19 +26,20 @@ console.log(
 const expls = [];
 const plgs = fs
   .readdirSync(`./src/${folder}`)
-  .filter((o) => !['.idea', '.vscode', '.hbuilderx', '.DS_Store'].includes(o));
+  .filter((o) => !['README.md', '.idea', '.vscode', '.hbuilderx', '.DS_Store'].includes(o));
 plgs.forEach((pluginName) => {
-  ['umd', 'es'].forEach((format) => {
-    const fileName = `${pluginName}.js`;
-    expls.push({
-      folder,
-      input: `${pluginName}/index.${format}.ts`,
-      output: `${folder}${format === formatPriority ? '' : `/${format}`
-        }/${fileName}`,
-      name: fileName,
-      format
+  if (pluginName !== '.DS_Store') {
+    ['umd', 'es'].forEach((format) => {
+      const fileName = `${pluginName}.js`;
+      expls.push({
+        folder,
+        input: `${pluginName}/index.${format}.ts`,
+        output: `${folder}${format === formatPriority ? '' : `/${format}`}/${fileName}`,
+        name: fileName,
+        format
+      });
     });
-  });
+  }
 });
 
 const configs = [];

@@ -45,3 +45,9 @@ export interface EVENT {
   userKey?: string;
   xpath?: string;
 }
+
+export interface EXTEND_EVENT extends EVENT {
+  requestId: string;
+  sendType?: string;
+  trackingId: string;
+}

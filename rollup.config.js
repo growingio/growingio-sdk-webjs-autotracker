@@ -32,7 +32,8 @@ const configGenerat = (format) => ({
   },
   plugins: [
     replace({
-      __SDK_VERSION__: packageJson.version || '0.0.1'
+      __SDK_VERSION__: packageJson.version || '0.0.1',
+      __GIO_PLUGIN_ENTRY__: `./plugins/plugins${packageFull ? '.full' : ''}.ts`
     }),
     alias({
       entries: {

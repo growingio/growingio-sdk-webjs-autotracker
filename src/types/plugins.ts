@@ -20,6 +20,10 @@ export interface PluginsType {
   gioImpressionTracking?: any;
   // 性能插件
   gioPerformance?: any;
+  // AB测试
+  gioABTest?: any;
+  // 多实例插件
+  gioMultipleInstances?: any;
   // 内置插件加载初始化
   innerPluginInit: () => void;
   // 单个插件加载初始化

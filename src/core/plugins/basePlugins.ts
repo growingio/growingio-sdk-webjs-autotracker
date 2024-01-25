@@ -12,7 +12,7 @@ import { consoleText } from '@/utils/tools';
 import EMIT_MSG from '@/constants/emitMsg';
 
 // 会被强制剔除出内置的插件（即必须通过手动注册的方式加载的内置插件）
-const EXTRA_PLUGINS = [];
+const EXTRA_PLUGINS = ['gioPerformance'];
 
 // @ts-nocheck
 class BasePlugins implements PluginsType {
@@ -49,7 +49,7 @@ class BasePlugins implements PluginsType {
         this.pluginsContext?.plugins[key] ?? {};
       // 若列表中出现同名插件，以第一个扫描出来的插件为准
       const isExist = find(this.pluginItems, (o) => o.name === name);
-      if (!isExist) {
+      if (name && method && !isExist) {
         this.pluginItems.push({
           // 优先使用指定插件名
           name: lowerFirst(name || key),
