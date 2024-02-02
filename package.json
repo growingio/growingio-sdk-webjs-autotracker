@@ -72,5 +72,47 @@
     "Safari >= 10",
     "Opera >= 38",
     "Edge >= 15"
-  ]
+  ],
+  "exports": {
+    "./gdp.umd": {
+      "import": "./dist/gdp.umd.js",
+      "require": "./dist/gdp.umd.js"
+    },
+    "./gdp-full": {
+      "import": "./dist/gdp-full.js",
+      "require": "./dist/gdp-full.js"
+    },
+    "./gdp-full.umd": {
+      "import": "./dist/gdp-full.umd.js",
+      "require": "./dist/gdp-full.umd.js"
+    },
+    "./plugins/gioABTest": {
+      "import": "./dist/plugins/gioABTest.js",
+      "require": "./dist/plugins/gioABTest.js"
+    },
+    "./plugins/gioCompress": {
+      "import": "./dist/plugins/gioCompress.js",
+      "require": "./dist/plugins/gioCompress.js"
+    },
+    "./plugins/gioEmbeddedAdapter": {
+      "import": "./dist/plugins/gioEmbeddedAdapter.js",
+      "require": "./dist/plugins/gioEmbeddedAdapter.js"
+    },
+    "./plugins/gioEventAutoTracking": {
+      "import": "./dist/plugins/gioEventAutoTracking.js",
+      "require": "./dist/plugins/gioEventAutoTracking.js"
+    },
+    "./plugins/gioHybridAdapter": {
+      "import": "./dist/plugins/gioHybridAdapter.js",
+      "require": "./dist/plugins/gioHybridAdapter.js"
+    },
+    "./plugins/gioImpressionTracking": {
+      "import": "./dist/plugins/gioImpressionTracking.js",
+      "require": "./dist/plugins/gioImpressionTracking.js"
+    },
+    "./plugins/gioMultipleInstances": {
+      "import": "./dist/plugins/gioMultipleInstances.js",
+      "require": "./dist/plugins/gioMultipleInstances.js"
+    }
+  }
 }
