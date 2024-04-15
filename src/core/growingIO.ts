@@ -54,7 +54,7 @@ class GrowingIO implements GrowingIOType {
     // sdk版本号
     this.sdkVersion = sdkVersion;
     this.vds = window.gioCompatibilityVds ? 'gdp_vds' : 'vds';
-    this.utils = Object.assign({}, glodash, tools, qs);
+    this.utils = { ...glodash, ...tools };
     this.emitter = mitt();
     // 初始化小程序打通逻辑
     this.useEmbeddedInherit = false;
@@ -176,6 +176,19 @@ class GrowingIO implements GrowingIOType {
   // 失败提示
   callError = (fn: string, type = true, msg = '参数不合法') =>
     consoleText(`${type ? '调用' : '设置'} ${fn} 失败，${msg}!`, 'warn');
+
+  // 手动更新曝光监听
+  updateImpression = () => {
+    const impressionMain = this.plugins?.gioImpressionTracking?.main;
+    if (impressionMain) {
+      impressionMain('emitter');
+    } else {
+      consoleText(
+        'updateImpression 错误! 请集成半自动埋点浏览插件后重试!',
+        'error'
+      );
+    }
+  };
 }
 
 export default GrowingIO;

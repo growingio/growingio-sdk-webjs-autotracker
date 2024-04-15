@@ -8,7 +8,7 @@ import {
   lowerFirst,
   unset
 } from '@/utils/glodash';
-import { consoleText, niceTry } from '@/utils/tools';
+import { consoleText } from '@/utils/tools';
 
 // 会被强制剔除出内置的插件（即必须通过手动注册的方式加载的内置插件）
 const EXTRA_PLUGINS = ['gioPerformance'];
@@ -30,8 +30,7 @@ class BasePlugins implements PluginsType {
   innerPluginInit = () => {
     EXTRA_PLUGINS.forEach((o) => unset(this.pluginsContext?.plugins, o));
     keys(this.pluginsContext?.plugins).forEach((key) => {
-      const { name, method }: PluginItem =
-        niceTry(() => this.pluginsContext?.plugins[key]) ?? {};
+      const { name, method }: PluginItem = this.pluginsContext?.plugins[key];
       // 若列表中出现同名插件，以第一个扫描出来的插件为准
       const isExist = find(this.pluginItems, (o) => o.name === name);
       if (!isExist) {

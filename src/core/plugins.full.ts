@@ -1,12 +1,12 @@
 import { GrowingIOType } from '@/types/growingIO';
-import gioCompress from '@/plugins/gioCompress/index.es';
-import gioCustomTracking from '@/plugins/gioCustomTracking/index.es';
-import gioEmbeddedAdapter from '@/plugins/gioEmbeddedAdapter/index.es';
-import gioEventAutoTracking from '@/plugins/gioEventAutoTracking/index.es';
-import gioHybridAdapter from '@/plugins/gioHybridAdapter/index.es';
-import gioHybridCircle from '@/plugins/gioHybridCircle/index.es';
-import gioImpressionTracking from '@/plugins/gioImpressionTracking/index.es';
-import gioWebCircle from '@/plugins/gioWebCircle/index.es';
+import gioCompress from '@/plugins/ordinary/gioCompress/index.es';
+import gioCustomTracking from '@/plugins/ordinary/gioCustomTracking/index.es';
+import gioEmbeddedAdapter from '@/plugins/ordinary/gioEmbeddedAdapter/index.es';
+import gioEventAutoTracking from '@/plugins/ordinary/gioEventAutoTracking/index.es';
+import gioHybridAdapter from '@/plugins/ordinary/gioHybridAdapter/index.es';
+import gioHybridCircle from '@/plugins/ordinary/gioHybridCircle/index.es';
+import gioImpressionTracking from '@/plugins/ordinary/gioImpressionTracking/index.es';
+import gioWebCircle from '@/plugins/ordinary/gioWebCircle/index.es';
 
 import BasePlugins from './basePlugins';
 

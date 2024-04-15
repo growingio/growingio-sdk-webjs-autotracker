@@ -221,8 +221,15 @@ class DataStore implements DataStoreType {
     vdsConfig.storageType = vdsConfig.storageType.toLowerCase();
     // 上报方式支持不区分大小写
     vdsConfig.sendType = vdsConfig.sendType.toLowerCase();
-    if (!includes(['beacon', 'xhr'], vdsConfig.sendType)) {
+    if (!includes(['beacon', 'xhr', 'image'], vdsConfig.sendType)) {
       vdsConfig.sendType = 'beacon';
+    }
+    // 请求超时时长设置的合法区间校验，值小于等于0ms认为不合法，改回5秒，浏览器默认有2分钟的上限
+    if (
+      isNaN(Number(vdsConfig.requestTimeout)) ||
+      vdsConfig.requestTimeout <= 0
+    ) {
+      vdsConfig.requestTimeout = 5000;
     }
     this.growingIO.vdsConfig = {
       ...(window.vds ?? {}),
@@ -313,7 +320,8 @@ class DataStore implements DataStoreType {
     const {
       dataStore: { eventContextBuilder, eventConverter },
       emitter,
-      storage
+      storage,
+      userStore
     } = this.growingIO;
     // 读取一次lastVisitEvent，如果是本地存储中的值，可以减少读取本地存储次数
     const { referralPage, title, path, query, timestamp } = this.lastVisitEvent;
@@ -336,8 +344,14 @@ class DataStore implements DataStoreType {
       event = { ...event, ...props };
     }
     const visitCallback = ({ requestData }) => {
-      if (requestData.eventType === 'VISIT') {
-        storage.setItem(this.visitStorageName, requestData.sessionId);
+      if (
+        requestData.eventType === 'VISIT' &&
+        requestData.trackingId === this.growingIO.trackingId
+      ) {
+        // 因为请求是异步的，防止更新了session以后，上一个请求中过期的sessionId复写回去导致bug
+        if (userStore.sessionId === requestData.sessionId) {
+          storage.setItem(this.visitStorageName, requestData.sessionId);
+        }
         emitter.off('onSendAfter', visitCallback);
       }
     };

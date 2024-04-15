@@ -135,6 +135,7 @@ export default class GioHybridAdapter {
     if (this.hasHybridBridge) {
       // 数据类型处理
       const nativeData = this.processAttributes({ ...requestData });
+      unset(nativeData, 'trackingId');
       // 符合转发条件的事件类型
       if (includes(SUPPORT_EVENT_TYPES, nativeData.eventType)) {
         if (includes(PENETRATED_EVENT_TYPES, nativeData.eventType)) {

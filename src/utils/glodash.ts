@@ -17,7 +17,7 @@ export const isObject = (o: any): boolean =>
 export const isRegExp = (o: any): boolean => typeOf(o) === 'regexp';
 
 export const isFunction = (o: any): boolean =>
-  ['function', 'asyncfunction'].includes(typeOf(o));
+  includes(['function', 'asyncfunction'], typeOf(o));
 
 export const isArray = (o: any): boolean =>
   Array.isArray(o) && typeOf(o) === 'array';

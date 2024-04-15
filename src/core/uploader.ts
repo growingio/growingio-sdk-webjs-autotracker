@@ -2,7 +2,7 @@ import { CDPEvent, SaasEvent } from '@/types/events';
 import { GrowingIOType } from '@/types/growingIO';
 import { UploaderType } from '@/types/uploader';
 import { isSafari, supportBeacon } from '@/utils/business/core';
-import { includes, isEmpty, unset } from '@/utils/glodash';
+import { isEmpty, unset } from '@/utils/glodash';
 
 class Uploader implements UploaderType {
   // 请求队列
@@ -21,13 +21,13 @@ class Uploader implements UploaderType {
   // 请求地址
   public requestURL: string;
   // 压缩加密方式
-  public compressType: '0' | '1';
+  public compressType: '0' | '1' | '11';
 
   constructor(public growingIO: GrowingIOType) {
     this.requestQueue = [];
     this.requestLimit = 10;
     this.requestTimeout = 5000;
-    this.retryLimit = 1; // 重试一次，算上一开始的发送，每种发送方式会发两次，还失败自动降级
+    this.retryLimit = 2; // 重试两次，算上一开始的发送，每种发送方式会发三次，还失败自动降级
     this.retryIds = {};
     this.requestingNum = 0;
     this.requestURL = '';
@@ -96,12 +96,13 @@ class Uploader implements UploaderType {
       // 经过加密逻辑的预处理数据
       let requestData = { ...preprocessedData };
       if (vdsConfig.compress && plugins?.gioCompress) {
-        this.compressType = '1';
         if (requestType === 'image') {
-          requestData = plugins?.gioCompress?.compressToUTF16(
+          this.compressType = '11';
+          requestData = plugins?.gioCompress?.compressToEncodedURIComponent(
             JSON.stringify([requestData])
           );
         } else {
+          this.compressType = '1';
           requestData = plugins?.gioCompress?.compressToUint8Array(
             JSON.stringify([requestData])
           );
@@ -143,32 +144,31 @@ class Uploader implements UploaderType {
 
   // 使用xhr发送
   sendByXHR = (eventData: SaasEvent | CDPEvent, requestData: string) => {
-    const async = includes(
-      ['unload', 'beforeunload', 'pagehide'],
-      window?.event?.type
-    );
     const xhr = new XMLHttpRequest();
     // 请求带cookie的现代浏览器
     if (xhr) {
-      xhr.open('POST', this.generateURL(), async);
-      xhr.onreadystatechange = () => {
-        if (xhr.readyState === 4 && xhr.status === 204) {
+      xhr.open('POST', this.generateURL(), true);
+      xhr.onload = () => {
+        if (xhr.status === 204) {
           this.requestSuccessFn(eventData);
         } else {
           this.requestFailFn(eventData, 'xhr');
         }
       };
+      xhr.ontimeout =
+        xhr.onerror =
+        xhr.onabort =
+          () => {
+            this.requestFailFn(eventData, 'xhr');
+          };
       xhr.setRequestHeader('Content-Type', 'text/plain;charset=UTF-8');
+      xhr.timeout = this.growingIO.vdsConfig.requestTimeout;
       xhr.send(requestData);
       return;
     } else if ((window as any)?.XDomainRequest) {
       // IE 7, 8, 9 and beta versions of 10
       const xdr = new window.XDomainRequest();
-      xdr.open(
-        'POST',
-        this.generateURL().replace('https://', 'http://'),
-        async
-      );
+      xdr.open('POST', this.generateURL().replace('https://', 'http://'), true);
       xdr.onload = () => {
         if (xdr.status === 204) {
           this.requestSuccessFn(eventData);
@@ -190,13 +190,27 @@ class Uploader implements UploaderType {
     let img = document.createElement('img');
     img.width = 1;
     img.height = 1;
+
+    // 手动控制图片请求的超时时长
+    let t = window.setTimeout(() => {
+      this.requestingNum -= 1;
+      this.clearImage(img);
+      window.clearTimeout(t);
+      t = null;
+      this.initiateRequest();
+    }, this.growingIO.vdsConfig.requestTimeout);
+
     img.onload = () => {
       this.requestSuccessFn(eventData);
       this.clearImage(img);
+      window.clearTimeout(t);
+      t = null;
     };
     img.onerror = img.onabort = () => {
       this.requestSuccessFn(eventData);
       this.clearImage(img);
+      window.clearTimeout(t);
+      t = null;
     };
     img.src = src;
   };
@@ -205,7 +219,7 @@ class Uploader implements UploaderType {
   clearImage = (img: any) => {
     img.src = '';
     img.onload = () => {};
-    img.onerror = img.onerabort = () => {};
+    img.onerror = img.onabort = () => {};
     img = null;
   };
 
@@ -217,7 +231,11 @@ class Uploader implements UploaderType {
       this.retryIds[eid] = 0;
     }
     // 重新赋值更新session有效期
-    if (eventData.trackingId === this.growingIO.trackingId) {
+    if (
+      eventData.trackingId === this.growingIO.trackingId &&
+      this.growingIO.userStore.sessionId === eventData.sessionId
+    ) {
+      // 因为请求是异步的，防止更新了session以后，上一个请求中过期的sessionId复写回去导致bug
       this.growingIO.userStore.sessionId = eventData.sessionId;
     }
     this.growingIO.emitter?.emit('onSendAfter', {
@@ -260,16 +278,13 @@ class Uploader implements UploaderType {
     if (!eventExist && nextReqType) {
       // 延迟半秒后再推入请求队列，给网络一点恢复时间
       let t = window.setTimeout(() => {
-        if (!isEmpty(this.requestQueue)) {
-          this.requestQueue.push({ ...eventData, requestType: nextReqType });
-        } else {
-          this.requestQueue.push({ ...eventData, requestType: nextReqType });
-          this.initiateRequest();
-        }
+        this.requestQueue.push({ ...eventData, requestType: nextReqType });
+        this.initiateRequest();
         window.clearTimeout(t);
         t = null;
       }, 800);
     }
+    this.initiateRequest();
   };
 }
 

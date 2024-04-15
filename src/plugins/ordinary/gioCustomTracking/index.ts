@@ -2,7 +2,10 @@
  * 名称：CDP自定义埋点插件
  * 用途：用于提供CDP环境自定义埋点的事件构建方法。
  */
-import { GioCustomTrackingType, ResourceItemType } from '@/types/plugins';
+import {
+  GioCustomTrackingType,
+  ResourceItemType
+} from '@/types/gioCustomTracking';
 import { GrowingIOType } from '@/types/growingIO';
 import {
   isArray,

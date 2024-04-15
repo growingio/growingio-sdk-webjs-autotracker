@@ -60,7 +60,9 @@ export const CDP_SETTING = {
   // 小程序内嵌打通时忽略的字段（即忽略的字段不会被打通）
   embeddedIgnore: { type: 'array', default: [] },
   // sdk持久化存储信息的存储类型
-  storageType: { type: 'string', default: 'cookie' }
+  storageType: { type: 'string', default: 'cookie' },
+  // 请求上报的超时时长
+  requestTimeout: { type: 'number', default: 5000 }
 };
 
 // Saas的默认配置项
@@ -110,7 +112,8 @@ export const CDPHandlers = [
   'trackTimerResume', // 恢复事件计时器
   'trackTimerEnd', // 停止事件计时器并上报事件
   'removeTimer', // 移除事件计时器
-  'clearTrackTimer' // 清除所有事件计时器
+  'clearTrackTimer', // 清除所有事件计时器
+  'updateImpression' // 手动更新曝光监控
 ];
 
 // 允许通过setOption修改的配置项

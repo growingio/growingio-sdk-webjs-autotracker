@@ -143,7 +143,7 @@ class CircleNode {
     return {
       index: pIndex || this.proxy.index,
       zLevel: this.zLevel(),
-      xpath: this.proxy.xpath,
+      xpath: this.proxy.fullXpath,
       isContainer: this.isDefinedContainer()
     };
   }

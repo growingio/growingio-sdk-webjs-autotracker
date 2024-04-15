@@ -1,5 +1,5 @@
 import { GrowingIOType } from '@/types/growingIO';
-import gioCustomTracking from '@/plugins/gioCustomTracking/index.es';
+import gioCustomTracking from '@/plugins/ordinary/gioCustomTracking/index.es';
 
 import BasePlugins from './basePlugins';
 

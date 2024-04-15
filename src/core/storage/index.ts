@@ -30,14 +30,14 @@ const domainParse = (originDomian: string) => {
       const domain3length = `.${splits.slice(-3).join('.')}`;
       if (
         !specialTopDomain.test(domain3length) &&
-        !dms.includes(domain3length)
+        !includes(dms, domain3length)
       ) {
         dms.push(domain3length);
       }
       const domain4length = `.${splits.slice(-4).join('.')}`;
       if (
         !specialTopDomain.test(domain4length) &&
-        !dms.includes(domain4length)
+        !includes(dms, domain4length)
       ) {
         dms.push(domain4length);
       }

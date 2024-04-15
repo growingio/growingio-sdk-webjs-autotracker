@@ -23,19 +23,15 @@ export default class GioImpressionTracking {
   private sentImps: any;
   constructor(public growingIO: GrowingIOType) {
     this.sentImps = {};
-    if (isIE()) {
-      consoleText(
-        'IE浏览器不支持半自动埋点，gioImpressionTracking已自动关闭！',
-        'warn'
-      );
-    } else {
+    if (window.IntersectionObserver && window.MutationObserver) {
       this.initIntersectionObserver();
       addListener(
         document,
         'readystatechange',
         () => {
-          includes(['interactive', 'complete'], document.readyState) &&
+          if (includes(['interactive', 'complete'], document.readyState)) {
             this.main('listener');
+          }
         },
         {
           once: true
@@ -48,6 +44,11 @@ export default class GioImpressionTracking {
         this.intersectionObserver?.disconnect();
         this.mutationObserver?.disconnect();
       });
+    } else {
+      consoleText(
+        '当前浏览器不支持半自动埋点，gioImpressionTracking已自动关闭！',
+        'warn'
+      );
     }
   }
 
@@ -71,18 +72,17 @@ export default class GioImpressionTracking {
     this.intersectionObserver = new IntersectionObserver((entries) => {
       if (!isEmpty(entries)) {
         entries.map((entry: any) => {
-          const { dataset } = entry.target;
+          const { dataset, id } = entry.target;
           // 相交率大于0说明出现在可视范围内
           if (entry.intersectionRatio > 0) {
             const { eventId, properties, items } =
               this.getImpressionProperties(dataset);
             // 曝光类型判断，单次曝光的需要有id和gio-imp-type字段
-            const sentId = dataset.id;
-            if (sentId) {
-              if (dataset.gioImpType === 'once' && has(this.sentImps, sentId)) {
+            if (id) {
+              if (dataset.gioImpType === 'once' && has(this.sentImps, id)) {
                 return;
               } else {
-                this.sentImps[sentId] = { eventId, properties, items };
+                this.sentImps[id] = { eventId, properties, items };
               }
             }
             // 有埋点事件id就可以上报埋点
@@ -98,7 +98,7 @@ export default class GioImpressionTracking {
   // 初始化Dom更改监听
   initMutationObserver = () => {
     if (this.mutationObserver) {
-      return false;
+      this.mutationObserver?.disconnect();
     }
     // 静态（已定义）的监听
     const impNodes = document.querySelectorAll('[data-gio-imp-track]');
@@ -107,11 +107,11 @@ export default class GioImpressionTracking {
     });
     // 动态设置的监听
     this.mutationObserver = new MutationObserver((mutationList: any[]) => {
-      return mutationList.map((mutRecord: any) => {
+      mutationList.map((mutRecord: any) => {
+        // 给节点动态加属性
         if (mutRecord.type === 'attributes') {
-          const { dataset } = mutRecord.target;
-          if (dataset.gioImpTrack) {
-            return this.intersectionObserver?.observe(mutRecord.target);
+          if (mutRecord.target.dataset?.gioImpTrack) {
+            this.intersectionObserver?.observe(mutRecord.target);
           }
         }
       });

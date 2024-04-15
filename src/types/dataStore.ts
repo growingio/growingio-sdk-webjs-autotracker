@@ -25,6 +25,7 @@ export interface UserOptions {
   touch?: boolean;
   version?: string;
   sendType?: 'beacon' | 'xhr' | 'image';
+  requestTimeout?: number;
 }
 
 export interface OriginOptions extends UserOptions {
