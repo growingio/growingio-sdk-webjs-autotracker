@@ -3,13 +3,15 @@ import {
   includes,
   isArray,
   isEmpty,
+  isFunction,
   isNil,
   isObject,
   keys,
+  last,
   toString,
   unset
 } from '@/utils/glodash';
-import { ALLOW_OPTIONS } from '@/constants/config';
+import { ALLOW_SET_OPTIONS, DEFAULT_SETTINGS } from '@/constants/config';
 import {
   callError,
   consoleText,
@@ -47,9 +49,9 @@ class GrowingIO implements GrowingIOType {
   public gioSDKFull: boolean;
   public gioSDKInitialized: boolean;
   // 小程序是否打通标识
-  public useEmbeddedInherit: boolean;
+  public useEmbeddedInherit: string;
   // hybrid是否打通标识
-  public useHybridInherit: boolean;
+  public useHybridInherit: string;
   public userStore: UserStoreType;
   public dataStore: DataStoreType;
   public plugins: PluginsType;
@@ -67,9 +69,9 @@ class GrowingIO implements GrowingIOType {
     this.utils = { ...glodash, ...tools };
     this.emitter = mitt();
     // 初始化小程序打通逻辑
-    this.useEmbeddedInherit = false;
+    this.useEmbeddedInherit = '';
     // hybrid打通逻辑
-    this.useHybridInherit = false;
+    this.useHybridInherit = '';
     // 初始化完成标记
     this.gioSDKInitialized = false;
     // 插件管理实例
@@ -78,10 +80,15 @@ class GrowingIO implements GrowingIOType {
     this.plugins.innerPluginInit();
     // 初始化数据中心
     this.dataStore = new DataStore(this);
+    // 初始化用户实例
+    this.userStore = new UserStore(this);
+    // 初始化上报实例
+    this.uploader = new Uploader(this);
   }
 
   // SDK初始化方法
   init = (options: any) => {
+    this.emitter.emit(EMIT_MSG.ON_SDK_INITIALIZE_BEFORE);
     try {
       consoleText('Gio Web SDK 初始化中...', 'info');
       if (
@@ -102,29 +109,24 @@ class GrowingIO implements GrowingIOType {
       if (isMain) {
         // 初始化存储
         this.storage = initGlobalStorage(this.vdsConfig);
-        // 初始化上报实例
-        this.uploader = new Uploader(this);
-        // 初始化用户实例
-        this.userStore = new UserStore(this);
         // 启动页面history的hook和监听
         currentPage.hookHistory();
         // 标记SDK已初始化完成
         this.gioSDKInitialized = true;
         this.vdsConfig.gioSDKInitialized = true;
-        window[this.vdsName] = this.vdsConfig;
-      }
-      // 解析当前页面
-      currentPage.parsePage();
-      if (this.vdsConfig.originalSource) {
-        // 保存初始来源信息
-        this.dataStore.setOriginalSource(options.trackingId);
       }
       // 广播基础配置初始化完成
       this.emitter?.emit(EMIT_MSG.OPTION_INITIALIZED, {
         growingIO: this,
-        trackingId: options.trackingId,
+        trackingId: vdsConfig.trackingId,
         vdsConfig
       });
+      // 解析当前页面
+      currentPage.parsePage();
+      // 保存初始来源信息(以主实例为准)
+      if (this.vdsConfig.originalSource) {
+        this.dataStore.setOriginalSource(vdsConfig.trackingId);
+      }
       consoleText('Gio Web SDK 初始化完成！', 'success');
       if (this.vdsConfig.forceLogin) {
         consoleText(
@@ -132,15 +134,15 @@ class GrowingIO implements GrowingIOType {
           'info'
         );
       }
-      // 先发visit和page
-      if (!isMain || !this.useEmbeddedInherit) {
-        sendVerifiedVisit(options.trackingId);
+      // 不是与小程序打通的实例要发visit
+      if (this.useEmbeddedInherit !== vdsConfig.trackingId) {
+        sendVerifiedVisit(vdsConfig.trackingId);
       }
-      sendVerifiedPage(options.trackingId);
+      sendVerifiedPage(vdsConfig.trackingId);
       // 广播SDK初始化完成
       this.emitter?.emit(EMIT_MSG.SDK_INITIALIZED, {
         growingIO: this,
-        trackingId: options.trackingId
+        trackingId: vdsConfig.trackingId
       });
       return true;
     } catch (error) {
@@ -151,37 +153,15 @@ class GrowingIO implements GrowingIOType {
 
   // 需要校验实例的方法执行
   handlerDistribute = (trackingId: string, handler: string, args: any) => {
-    const tracker = this.dataStore.getTracker(trackingId);
-    if (tracker) {
+    const trackerVds = this.dataStore.getTrackerVds(trackingId);
+    if (trackerVds) {
       this[handler](trackingId, ...args);
     } else {
+      if (isFunction(last(args))) {
+        niceCallback(last(args), false);
+      }
       consoleText(`不存在实例：${trackingId}，请检查!`, 'warn');
     }
-  };
-
-  // 发送visit事件（允许外部调用的手动发送visit）
-  sendVisit = (
-    trackingId: string,
-    props?: any,
-    callback?: (args?: any) => any
-  ) => {
-    this.dataStore.buildVisitEvent({ ...props, trackingId });
-    // 执行回调
-    niceCallback(callback);
-  };
-
-  // 发送page事件（允许外部调用的手动发送page）
-  sendPage = (
-    trackingId: string,
-    props?: any,
-    callback?: (args?: any) => any
-  ) => {
-    this.dataStore.currentPage.buildPageEvent({
-      ...props,
-      trackingId
-    });
-    // 执行回调
-    niceCallback(callback);
   };
 
   // 手动注册插件
@@ -222,13 +202,17 @@ class GrowingIO implements GrowingIOType {
     callback?: (arg?: any) => any
   ) => {
     let r;
-    if (includes(keys(ALLOW_OPTIONS), k)) {
-      r = this.dataStore.setOption(trackingId, k, v);
-      if (r && ALLOW_OPTIONS[k]) {
-        consoleText(`已修改${ALLOW_OPTIONS[k]}: ${v}`, 'info');
+    if (includes(keys(ALLOW_SET_OPTIONS), k)) {
+      if (typeof v === DEFAULT_SETTINGS[k]?.type) {
+        this.dataStore.setOption(trackingId, k, v);
+        consoleText(`已修改${ALLOW_SET_OPTIONS[k]}: ${v}`, 'info');
+        r = true;
+      } else {
+        consoleText(`参数格式不正确：${v}，请检查后重试!`, 'error');
+        r = false;
       }
     } else {
-      consoleText(`不存在可修改的配置项：${k}，请检查后重试!`, 'warn');
+      consoleText(`不存在可修改的配置项：${k}，请检查后重试!`, 'error');
       r = false;
     }
     // 执行回调
@@ -238,64 +222,77 @@ class GrowingIO implements GrowingIOType {
   // 运行中获取配置
   getOption = (
     trackingId: string,
-    k: string,
+    k: string | any,
     callback?: (arg?: any) => any
   ) => {
+    if (isFunction(k) && isNil(callback)) {
+      callback = k;
+      k = undefined;
+    }
     niceCallback(callback, this.dataStore.getOption(trackingId, k));
   };
 
-  // 设置埋点事件的通用属性（即每个埋点事件都会带上的属性值）
-  setGeneralProps = (
+  // 发送visit事件（允许外部调用的手动发送visit）
+  sendVisit = (
     trackingId: string,
-    properties: any,
-    callback?: (arg?: any) => any
+    props?: any,
+    callback?: (args?: any) => any
   ) => {
-    // 获取目标tracker的引用
-    const tracker = this.dataStore.getTracker(trackingId);
-    let r;
-    if (tracker) {
-      if (isObject(properties) && !isEmpty(properties)) {
-        tracker.generalProps = {
-          ...(tracker.generalProps ?? {}),
-          ...properties
-        };
-        keys(tracker.generalProps).forEach((k: string) => {
-          if (includes([undefined, null], tracker.generalProps[k])) {
-            tracker.generalProps[k] = '';
-          }
-        });
-        r = true;
-      } else {
-        callError('setGeneralProps');
-        r = false;
-      }
-    } else {
-      callError('setGeneralProps', true, `不存在实例${trackingId}!`);
-      r = false;
-    }
-    niceCallback(callback, r);
+    this.dataStore.buildVisitEvent({ ...props, trackingId });
+    // 执行回调
+    niceCallback(callback);
   };
 
-  // 清空已设置的埋点事件的通用属性
-  clearGeneralProps = (
-    trackingId: string,
-    properties: string[] | undefined,
-    callback?: (arg?: any) => any
-  ) => {
-    // 获取目标tracker的引用
-    const tracker = this.dataStore.getTracker(trackingId);
-    if (tracker) {
-      if (isArray(properties) && !isEmpty(properties)) {
-        properties.forEach((prop: string) => {
-          unset(tracker.generalProps, prop);
-        });
-      } else {
-        tracker.generalProps = {};
+  // 添加页面变更事件监听（方便关闭trackPage时客户感知何时应该发页面事件）
+  setPageListener = (trackingId: string, callback?: (arg?: any) => void) => {
+    const { currentPage } = this.dataStore;
+    if (isFunction(callback)) {
+      currentPage.pageListeners[trackingId] = callback;
+      // 设置监听的时候会触发一次回调，使得当前页面的page能够有机会补发
+      const { path, query, title } = this.dataStore.currentPage;
+      niceCallback(callback, { path, query, title });
+    }
+  };
+
+  // 设置页面属性
+  setPageAttributes = (trackingId: string, properties: any) => {
+    const { trackPage } = this.dataStore.getTrackerVds(trackingId);
+    if (!trackPage) {
+      const { currentPage } = this.dataStore;
+      if (isEmpty(currentPage.pageProps[trackingId])) {
+        currentPage.pageProps[trackingId] = {};
+      }
+      // 如果多次连续调用，结果合并
+      if (!isEmpty(properties)) {
+        currentPage.pageProps[trackingId] = {
+          ...currentPage.pageProps[trackingId],
+          ...properties
+        };
       }
     } else {
-      callError('setGeneralProps', true, `不存在实例${trackingId}!`);
+      consoleText(
+        '仅在关闭trackPage时允许调用setPageAttributes，请确认后修改初始化配置项!',
+        'error'
+      );
     }
-    niceCallback(callback);
+  };
+
+  // 发送page事件（允许外部调用的手动发送page）
+  sendPage = (
+    trackingId: string,
+    props?: any,
+    callback?: (args?: any) => any
+  ) => {
+    const { trackPage } = this.dataStore.getTrackerVds(trackingId);
+    if (!trackPage) {
+      this.dataStore.currentPage.buildPageEvent(trackingId, props);
+      niceCallback(callback);
+    } else {
+      consoleText(
+        '仅在关闭trackPage时允许调用sendPage，请确认后修改初始化配置项!',
+        'error'
+      );
+    }
   };
 
   // 设置设备ID，一般为openId
@@ -322,57 +319,15 @@ class GrowingIO implements GrowingIOType {
         // 为已积压的请求使用assignmentId全部赋值deviceId
         const hq = this.uploader.getHoardingQueue(tid);
         hq.forEach((_, i) => (hq[i].deviceId = asId));
+        if (tid === this.trackingId && this.vdsConfig.forceLogin) {
+          this.dataStore.setOption(tid, 'forceLogin', false);
+        }
         // 发送积压队列中的请求
         this.uploader.initiateRequest(tid);
       });
-      this.dataStore.setOption(this.trackingId, 'forceLogin', false);
     } else {
       callError('identify', !1, 'forceLogin未开启');
     }
-    niceCallback(callback);
-  };
-
-  // 设置登录用户Id
-  setUserId = (
-    trackingId: string,
-    userId: string | number,
-    userKey?: string,
-    callback?: (arg?: any) => any
-  ) => {
-    let r;
-    if (verifyId(toString(userId).trim())) {
-      // 切换userId要重设session补发visit
-      const prevId = this.userStore.getGioId(trackingId);
-      // IdMapping开启，且传了userKey则需要校验并赋值（userKey要在userId之前设置，才能保证native中的值是正确的）
-      const processedKey =
-        !isNil(userKey) && toString(userKey).length > 0
-          ? toString(userKey).slice(0, 1000)
-          : '';
-      const tracker = this.dataStore.getTracker(trackingId);
-      if (tracker.vdsConfig.idMapping) {
-        this.userStore.setUserKey(trackingId, processedKey);
-      } else if (processedKey) {
-        consoleText('您设置了 userKey ，请初始化开启 idMapping!', 'warn');
-      }
-      this.userStore.setUserId(trackingId, toString(userId).slice(0, 1000));
-      // 切换用户时重置session
-      if (prevId && prevId !== this.userStore.getUserId(trackingId)) {
-        // 这里赋值空，实际会在userStore的set方法里重新生成一个，并通过监听自动重发visit和page
-        this.userStore.setSessionId(trackingId, '');
-      }
-      r = true;
-    } else {
-      this.clearUserId(trackingId);
-      callError('setUserId');
-      r = false;
-    }
-    niceCallback(callback, r);
-  };
-
-  // 清除登录用户Id和userKey
-  clearUserId = (trackingId: string, callback?: (arg?: any) => any) => {
-    this.userStore.setUserId(trackingId, '');
-    this.userStore.setUserKey(trackingId, '');
     niceCallback(callback);
   };
 
@@ -399,6 +354,89 @@ class GrowingIO implements GrowingIOType {
     niceCallback(callback, r);
   };
 
+  // 设置登录用户Id
+  setUserId = (
+    trackingId: string,
+    userId: string | number,
+    userKey?: string,
+    callback?: (arg?: any) => any
+  ) => {
+    let r;
+    if (verifyId(toString(userId).trim())) {
+      // 切换userId要重设session补发visit
+      const prevId = this.userStore.getGioId(trackingId);
+      // IdMapping开启，且传了userKey则需要校验并赋值（userKey要在userId之前设置，才能保证native中的值是正确的）
+      const processedKey =
+        !isNil(userKey) && toString(userKey).length > 0
+          ? toString(userKey).slice(0, 1000)
+          : '';
+      const { idMapping } = this.dataStore.getTrackerVds(trackingId);
+      if (idMapping) {
+        this.userStore.setUserKey(trackingId, processedKey);
+      } else if (processedKey) {
+        consoleText('您设置了 userKey ，请初始化开启 idMapping!', 'warn');
+      }
+      this.userStore.setUserId(trackingId, toString(userId).slice(0, 1000));
+      // 切换用户时重置session
+      if (prevId && prevId !== this.userStore.getUserId(trackingId)) {
+        // 这里赋值空，实际会在userStore的set方法里重新生成一个，并通过监听自动重发visit和page
+        this.userStore.setSessionId(trackingId, '');
+      }
+      r = true;
+    } else {
+      this.clearUserId(trackingId);
+      callError('setUserId');
+      r = false;
+    }
+    niceCallback(callback, r);
+  };
+
+  // 清除登录用户Id和userKey
+  clearUserId = (trackingId: string, callback?: (arg?: any) => any) => {
+    this.userStore.setUserId(trackingId, '');
+    this.userStore.setUserKey(trackingId, '');
+    niceCallback(callback);
+  };
+
+  // 设置埋点事件的通用属性（即每个埋点事件都会带上的属性值）
+  setGeneralProps = (
+    trackingId: string,
+    properties: any,
+    callback?: (arg?: any) => any
+  ) => {
+    let r;
+    if (!isEmpty(properties)) {
+      this.dataStore.generalProps[trackingId] = {
+        ...(this.dataStore.generalProps[trackingId] ?? {}),
+        ...properties
+      };
+      r = true;
+    } else {
+      callError('setGeneralProps');
+      r = false;
+    }
+    niceCallback(callback, r);
+  };
+
+  // 清空已设置的埋点事件的通用属性
+  clearGeneralProps = (
+    trackingId: string,
+    properties: string[] | undefined,
+    callback?: (arg?: any) => any
+  ) => {
+    if (!isEmpty(this.dataStore.generalProps[trackingId])) {
+      // 获取目标tracker的引用
+      if (isArray(properties) && !isEmpty(properties)) {
+        properties.forEach((propName: string) => {
+          unset(this.dataStore.generalProps[trackingId], propName);
+        });
+      } else {
+        this.dataStore.generalProps[trackingId] = {};
+      }
+    }
+    niceCallback(callback);
+  };
+
   // 创建自定义埋点事件
   track = (
     trackingId: string,
@@ -407,21 +445,27 @@ class GrowingIO implements GrowingIOType {
     callback?: (arg?: any) => any
   ) => {
     eventNameValidate(eventName, () => {
-      const { eventContextBuilder, eventConverter } = this.dataStore;
-      // 获取目标tracker的引用
-      const tracker = this.dataStore.getTracker(trackingId);
-      const generalProps = tracker.generalProps ?? {};
+      const { eventContextBuilder, eventConverter, generalProps } =
+        this.dataStore;
       const mergedProperties = {
-        ...generalProps,
+        ...(generalProps[trackingId] ?? {}),
         ...(isObject(properties) && !isEmpty(properties) ? properties : {})
       };
-      let event = {
+      const event = {
         eventType: 'CUSTOM',
         eventName,
         attributes: limitObject(getDynamicAttributes(mergedProperties)),
         ...eventContextBuilder(trackingId),
         customEventType: 1
       };
+      // 埋点事件要保留'&&sendTo'字段用于多实例复制发送
+      if (
+        this.plugins.gioMultipleInstances &&
+        properties &&
+        properties['&&sendTo']
+      ) {
+        event['&&sendTo'] = properties['&&sendTo'];
+      }
       eventConverter(event);
     });
     niceCallback(callback);
@@ -434,8 +478,8 @@ class GrowingIO implements GrowingIOType {
     callback?: (arg?: any) => any
   ) => {
     let timerId;
-    const tracker = this.dataStore.getTracker(trackingId);
-    if (tracker?.vdsConfig?.dataCollect) {
+    const { dataCollect } = this.dataStore.getTrackerVds(trackingId);
+    if (dataCollect) {
       eventNameValidate(eventName, () => {
         timerId = guid();
         if (!this.dataStore.trackTimers[trackingId]) {
@@ -494,14 +538,14 @@ class GrowingIO implements GrowingIOType {
   trackTimerEnd = (
     trackingId: string,
     timerId: string,
-    attributes: any,
+    properties: any,
     callback?: (arg?: any) => any
   ) => {
     let r;
-    const tracker = this.dataStore.getTracker(trackingId);
+    const { dataCollect } = this.dataStore.getTrackerVds(trackingId);
     const timers = this.dataStore.trackTimers[trackingId];
     if (timerId && timers && timers[timerId]) {
-      if (tracker.vdsConfig?.dataCollect) {
+      if (dataCollect) {
         const maxEnd = 60 * 60 * 24 * 1000;
         const timer = timers[timerId];
         if (timer.start !== 0) {
@@ -513,16 +557,25 @@ class GrowingIO implements GrowingIOType {
           eventType: 'CUSTOM',
           eventName: timer.eventName,
           attributes: limitObject({
-            ...attributes,
+            ...properties,
             event_duration: timer.leng > maxEnd ? 0 : timer.leng / 1000
           }),
           ...eventContextBuilder(trackingId),
           customEventType: 0
         };
+        // 埋点事件要保留'&&sendTo'字段用于多实例复制发送
+        if (
+          this.plugins.gioMultipleInstances &&
+          properties &&
+          properties['&&sendTo']
+        ) {
+          event['&&sendTo'] = properties['&&sendTo'];
+        }
         eventConverter(event);
         r = true;
       } else {
         consoleText('指定实例未开启数据采集，计时器已移除，请检查!', 'error');
+        r = false;
       }
       this.removeTimer(trackingId, timerId);
     } else {
@@ -557,7 +610,7 @@ class GrowingIO implements GrowingIOType {
   updateImpression = (callback?: () => any) => {
     const impressionMain = this.plugins?.gioImpressionTracking?.main;
     if (impressionMain) {
-      impressionMain('emitter');
+      impressionMain('manual');
     } else {
       consoleText(
         'updateImpression 错误! 请集成半自动埋点浏览插件后重试!',
@@ -565,6 +618,12 @@ class GrowingIO implements GrowingIOType {
       );
     }
     niceCallback(callback);
+  };
+
+  // 获取A/B实验数据
+  getABTest = (trackingId: string, layerId: string | number, callback: any) => {
+    consoleText('获取ABTest数据错误! 请集成ABTest插件后重试!', 'error');
+    niceCallback(callback, {});
   };
 }
 

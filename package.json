@@ -1,8 +1,7 @@
 {
   "name": "gio-webjs-sdk",
-  "version": "4.1.1",
+  "version": "4.1.2",
   "description": "GrowngIO Web/H5/小程序内嵌页/Hybrid数据采集SDK",
-  "main": "dist/gdp.js",
   "dependencies": {
     "array-from": "^2.1.1",
     "gio-web-nodes-parser": "^2.0.10",
@@ -74,17 +73,17 @@
     "Edge >= 15"
   ],
   "exports": {
-    "./gdp.umd": {
-      "import": "./dist/gdp.umd.js",
-      "require": "./dist/gdp.umd.js"
+    ".": {
+      "import": "./dist/gdp.js",
+      "require": "./dist/gdp.js"
+    },
+    "./gdp": {
+      "import": "./dist/gdp.js",
+      "require": "./dist/gdp.js"
     },
     "./gdp-full": {
       "import": "./dist/gdp-full.js",
       "require": "./dist/gdp-full.js"
-    },
-    "./gdp-full.umd": {
-      "import": "./dist/gdp-full.umd.js",
-      "require": "./dist/gdp-full.umd.js"
     },
     "./plugins/gioABTest": {
       "import": "./dist/plugins/gioABTest.js",

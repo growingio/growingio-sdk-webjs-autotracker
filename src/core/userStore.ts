@@ -23,16 +23,13 @@ class UserStore implements UserStoreType {
   // 最近的一个uid
   private prevUId: string;
   constructor(public growingIO: GrowingIOType) {
-    const { storage } = this.growingIO;
     this.prevIds = {};
-    this.growingIO.emitter.on(EMIT_MSG.OPTION_INITIALIZED, ({ trackingId }) => {
-      if (
-        trackingId === this.growingIO.trackingId &&
-        storage.getItem('gr_user_id')
-      ) {
-        this.transferStorage();
+    this.growingIO.emitter.on(
+      EMIT_MSG.OPTION_INITIALIZED,
+      ({ trackingId, growingIO }) => {
+        this.transferStorage(trackingId, growingIO);
       }
-    });
+    );
   }
 
   // 获取设备Id
@@ -96,8 +93,7 @@ class UserStore implements UserStoreType {
       storage.getItem(this._getSidKey(trackingId)) ||
       this.getPrevSessionId(trackingId);
     // sessionId默认30分钟有效期(要在初始化配置项里改才生效)
-    const tracker = dataStore.getTracker(trackingId);
-    const { sessionExpires = 30 } = tracker.vdsConfig;
+    const { sessionExpires = 30 } = dataStore.getTrackerVds(trackingId);
     storage.setItem(
       this._getSidKey(trackingId),
       sId,
@@ -273,30 +269,39 @@ class UserStore implements UserStoreType {
     this.prevIds[trackingId].gioId = gioId;
   };
 
-  // 兼容老saas2.0的存储，自动转
-  transferStorage = () => {
-    const {
-      vdsConfig: { projectId },
-      storage,
-      trackingId
-    } = this.growingIO;
-    // 获取老Saas在本地存储的deviceId
-    this.setUid(storage.getItem('gr_user_id') || this.getUid());
-    // 获取老Saas在本地存储的userId
-    this.setUserId(
-      trackingId,
-      storage.getItem(`${projectId}_gr_cs1`) || this.getUserId(trackingId)
-    );
-    // 移除原有老Saas的项
-    storage.removeItem('gr_user_id'); // deviceId
-    storage.removeItem(`${projectId}_gr_cs1`); // userId
-    storage.removeItem(`${projectId}_gr_last_sent_cs1`); // 上一个userId标记
-    storage.removeItem(`${projectId}_gr_last_sent_sid_with_cs1`); // 上一个带userId的session标记
-    storage.removeItem(`${projectId}_gr_session_id`); // sessionId
-    storage.removeItem(`${projectId}_gr_session_id_sent_vst`); // visit发送标记
-    const impKey = find(storage.getKeys(), (k) => k.indexOf('gr_imp_') > -1);
-    if (impKey) {
-      storage.removeItem(impKey);
+  // 用户存储转换逻辑
+  transferStorage = (trackingId: string, growingIO: GrowingIOType) => {
+    // 兼容老saas2.0的存储，自动转
+    if (
+      trackingId === growingIO.trackingId &&
+      this.growingIO.storage.getItem('gr_user_id')
+    ) {
+      const {
+        vdsConfig: { projectId },
+        storage
+      } = growingIO;
+      // 获取老Saas在本地存储的deviceId
+      const grUid = storage.getItem('gr_user_id');
+      // 没有设备Id时直接继续不生成，后续逻辑会触发设新值
+      if (grUid) {
+        this.setUid(grUid);
+      }
+      // 获取老Saas在本地存储的userId
+      this.setUserId(
+        trackingId,
+        storage.getItem(`${projectId}_gr_cs1`) || this.getUserId(trackingId)
+      );
+      // 移除原有老Saas的项
+      storage.removeItem('gr_user_id'); // deviceId
+      storage.removeItem(`${projectId}_gr_cs1`); // userId
+      storage.removeItem(`${projectId}_gr_last_sent_cs1`); // 上一个userId标记
+      storage.removeItem(`${projectId}_gr_last_sent_sid_with_cs1`); // 上一个带userId的session标记
+      storage.removeItem(`${projectId}_gr_session_id`); // sessionId
+      storage.removeItem(`${projectId}_gr_session_id_sent_vst`); // visit发送标记
+      const impKey = find(storage.getKeys(), (k) => k.indexOf('gr_imp_') > -1);
+      if (impKey) {
+        storage.removeItem(impKey);
+      }
     }
   };
 }

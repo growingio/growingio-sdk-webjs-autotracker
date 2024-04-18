@@ -16,39 +16,43 @@ class EventContextBuilder {
     }
     const { sdkVersion, useEmbeddedInherit, userStore, dataStore } =
       this.growingIO;
-    const { path, query } = dataStore.currentPage;
-    const { vdsConfig } = this.growingIO.dataStore.getTracker(trackingId);
+    const { path, query, title } = dataStore.currentPage;
+    const trackerVds = dataStore.getTrackerVds(trackingId);
+    const lpv = niceTry(() => dataStore.lastPageEvent[trackingId]) ?? {};
     // 事件主要内容组装
     let context: any = {
-      appVersion: vdsConfig.version,
-      dataSourceId: vdsConfig.dataSourceId,
+      appVersion: trackerVds.version,
+      dataSourceId: trackerVds.dataSourceId,
       deviceId: userStore.getUid(),
       domain:
-        trackingId === this.growingIO.trackingId && useEmbeddedInherit
-          ? vdsConfig.appId
+        trackingId === useEmbeddedInherit
+          ? trackerVds.appId
           : window.location.host,
       language: navigator.language,
       path,
-      platform: vdsConfig.platform,
+      platform: trackerVds.platform,
       query,
-      referralPage: dataStore.lastPageEvent?.referralPage || '',
+      referralPage: dataStore.currentPage.getReferralPage(trackingId) || '',
       screenHeight: window.screen.height,
       screenWidth: window.screen.width,
       sdkVersion,
       sessionId: userStore.getSessionId(trackingId),
       timestamp: +Date.now(),
       timezoneOffset: new Date().getTimezoneOffset(),
-      title: niceTry(() => document.title.slice(0, 255)) ?? '',
+      // 除visit,page事件外，其他事件都用lastpage中的title以保持一致
+      title: lpv.title ?? title ?? niceTry(() => document.title.slice(0, 255)),
       userId: userStore.getUserId(trackingId)
     };
     // 开启IDMapping的时候才把userKey带上
-    if (vdsConfig.idMapping) {
+    if (trackerVds.idMapping) {
       context.userKey = userStore.getUserKey(trackingId);
+    } else {
+      context.userKey = '';
     }
 
     // 过滤忽略字段（打通时忽略字段可能会失效，字段会继续被小程序覆盖）
-    if (!isEmpty(vdsConfig.ignoreFields)) {
-      (vdsConfig.ignoreFields as string[]).forEach((o) => {
+    if (!isEmpty(trackerVds.ignoreFields)) {
+      (trackerVds.ignoreFields as string[]).forEach((o) => {
         unset(context, o);
       });
     }
@@ -62,13 +66,13 @@ class EventContextBuilder {
      */
     // 小程序打通时，优先使用打通的字段
     if (
-      trackingId === this.growingIO.trackingId &&
       useEmbeddedInherit &&
+      trackingId === useEmbeddedInherit &&
       !isEmpty(this.minpExtraParams)
     ) {
       const originContext = { ...context };
       forEach({ ...context, ...this.minpExtraParams }, (_, k) => {
-        if (includes(vdsConfig.embeddedIgnore, k)) {
+        if (includes(trackerVds.embeddedIgnore, k)) {
           // 存在打通忽略的字段时，不进行覆盖，取原值（但是domain要特殊处理）
           context[k] = originContext[k];
           if (k === 'domain') {

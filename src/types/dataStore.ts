@@ -1,6 +1,7 @@
 import PageType from './page';
 
 export interface UserOptions {
+  appId?: string;
   autotrack?: boolean;
   compress?: boolean;
   cookieDomain?: string;
@@ -13,6 +14,7 @@ export interface UserOptions {
   hashtag?: boolean;
   ignoreFields?: string[];
   originalSource?: boolean;
+  packageName?: string;
   penetrateHybrid?: boolean;
   performance?: {
     monitor?: boolean;
@@ -32,9 +34,10 @@ export interface UserOptions {
 }
 
 export interface OriginOptions extends UserOptions {
-  projectId: string;
+  appId?: string;
   dataSourceId?: string;
-  appId: string;
+  packageName?: string;
+  projectId: string;
   trackingId: string;
 }
 
@@ -45,7 +48,8 @@ export type StorageKeyType =
   | 'sessionId'
   | 'userId'
   | 'userKey'
-  | 'gioId';
+  | 'gioId'
+  | 'gqs';
 
 export interface DataStoreType {
   initializedTrackingIds: string[];
@@ -53,7 +57,7 @@ export interface DataStoreType {
   setGsid: (trackingId: string, value: number) => void;
   currentPage: PageType;
   eventContextBuilderInst: any;
-  getTracker: (trackingId: string) => any;
+  getTrackerVds: (trackingId: string) => any;
   getKeyPrefix: (trackingId: string) => string;
   getStorageKey: (trackingId: string, name: StorageKeyType) => string;
   eventContextBuilder: (trackingId?: string) => any;
@@ -61,8 +65,9 @@ export interface DataStoreType {
   getOriginalSource: (trackingId: string) => any;
   initTrackerOptions: (userOptions: OriginOptions) => OriginOptions;
   initOptions: (userOptions: OriginOptions) => OriginOptions;
-  setOption: (trackingId: string, k: string, v: any) => boolean;
+  setOption: (trackingId: string, k: string, v: any) => void;
   getOption: (trackingId: string, k?: string) => OriginOptions;
+  updateVdsConfig: (trackingId: string, vds: any) => void;
   sendVerifiedVisit: (trackingId: string, forceSend?: boolean) => void;
   sendVerifiedPage: (trackingId: string, forceParse?: boolean) => void;
   buildVisitEvent: (props?: any) => void;

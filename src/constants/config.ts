@@ -21,13 +21,16 @@ export const STORAGE_KEYS: any = {
   sessionId: '_gdp_session_id',
   userId: '_gdp_cs1_gioenc',
   userKey: '_gdp_user_key_gioenc',
-  gioId: '_gdp_gio_id_gioenc'
+  gioId: '_gdp_gio_id_gioenc',
+  gqs: '_gdp_query_string_gioenc'
 };
 
 // SDK系统的默认配置项
-export const DEFAULT_SETTING = {
+export const DEFAULT_SETTINGS = {
   // 是否开启无埋点
   autotrack: { type: 'boolean', default: true },
+  // 指定打通小程序的appId
+  appId: { type: 'string', default: '' },
   // 是否开启数据加密压缩
   compress: { type: 'boolean', default: true },
   // cookie存储的域；多实例时仅主实例生效
@@ -51,6 +54,8 @@ export const DEFAULT_SETTING = {
   ignoreFields: { type: 'array', default: [] },
   // 是否使用原始来源信息作为访问事件的参数上报；多实例时仅主实例生效
   originalSource: { type: 'boolean', default: true },
+  // 指定打通app的包名
+  packageName: { type: 'string', default: '' },
   // 是否穿透hybrid
   penetrateHybrid: { type: 'boolean', default: true },
   // 是否开启性能采集
@@ -71,7 +76,7 @@ export const DEFAULT_SETTING = {
   touch: { type: 'boolean', default: false },
   // 是否采集爬虫数据
   trackBot: { type: 'boolean', default: true },
-  // 是否采集页面访问事件
+  // 是否自动采集页面访问事件
   trackPage: { type: 'boolean', default: true },
   // 应用版本号
   version: { type: 'string', default: '1.0.0' }
@@ -97,6 +102,8 @@ export const INSTANCE_HANDLERS = [
   'sendVisit', // 手动发visit事件
   'setGeneralProps', // 设置埋点通用属性
   'setOption', // 设置配置项
+  'setPageAttributes', // 设置页面属性
+  'setPageListener', // 设置页面变更监听回调
   'setUserAttributes', // 设置用户属性
   'setUserId', // 设置用户id
   'track', // 上报埋点
@@ -115,7 +122,7 @@ export const HANDLERS = [
 ];
 
 // 允许通过setOption修改的配置项
-export const ALLOW_OPTIONS = {
+export const ALLOW_SET_OPTIONS = {
   autotrack: '无埋点采集',
   dataCollect: '数据采集',
   dataSourceId: '数据源ID',

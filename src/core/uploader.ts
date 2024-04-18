@@ -41,8 +41,8 @@ class Uploader implements UploaderType {
 
   // 生成上报接口地址
   generateURL = (trackingId: string) => {
-    const tracker = this.growingIO.dataStore.getTracker(trackingId);
-    const { serverUrl, projectId } = tracker.vdsConfig;
+    const { serverUrl, projectId } =
+      this.growingIO.dataStore.getTrackerVds(trackingId);
     if (!startsWith(serverUrl, 'http')) {
       return `https://${serverUrl}/v3/projects/${projectId}/collect`;
     } else {
@@ -52,8 +52,7 @@ class Uploader implements UploaderType {
 
   // 获取上报方式
   getSendType = (trackingId: string) => {
-    const tracker = this.growingIO.dataStore.getTracker(trackingId);
-    const { sendType } = tracker.vdsConfig;
+    const { sendType } = this.growingIO.dataStore.getTrackerVds(trackingId);
     if (sendType === 'beacon') {
       return supportBeacon() ? 'beacon' : 'xhr';
     } else {
@@ -67,13 +66,21 @@ class Uploader implements UploaderType {
 
   // 提交请求（将请求按队列进行管理）
   commitRequest = (commitData: EXTEND_EVENT) => {
+    const { vdsConfig, emitter } = this.growingIO;
+    emitter.emit(EMIT_MSG.ON_COMMIT_REQUEST, {
+      eventData: commitData,
+      trackingId: commitData.trackingId
+    });
     const data: any = {
       ...commitData,
       requestType: this.getSendType(commitData.trackingId)
     };
     // 如果开启forceLogin 则将请求推入积压队列，反之则进入请求队列
-    if (this.growingIO.vdsConfig.forceLogin) {
-      this.getHoardingQueue(commitData.trackingId)?.push(data);
+    if (vdsConfig.forceLogin) {
+      if (!this.hoardingQueue[commitData.trackingId]) {
+        this.hoardingQueue[commitData.trackingId] = [];
+      }
+      this.hoardingQueue[commitData.trackingId]?.push(data);
     } else {
       this.requestQueue.push(data);
       this.initiateRequest(commitData.trackingId);
@@ -104,7 +111,7 @@ class Uploader implements UploaderType {
     }
   };
 
-  // 主实例发送事件
+  // 发送事件
   sendEvent = (eventData: any) => {
     const { vdsConfig, useHybridInherit, plugins } = this.growingIO;
     // 预处理的数据（删除了requestType、trackingId和requestId，可以直接打log和发送）
@@ -129,10 +136,7 @@ class Uploader implements UploaderType {
     }
     this.requestingNum += 1;
     // 与native打通时把事件广播出去就好了，让插件收事件进行转发
-    if (
-      useHybridInherit &&
-      eventData.trackingId === this.growingIO.trackingId
-    ) {
+    if (useHybridInherit === eventData.trackingId) {
       this.requestSuccessFn(eventData);
       return false;
     }
@@ -193,7 +197,9 @@ class Uploader implements UploaderType {
     requestData: string,
     requestURL: string
   ) => {
-    const tracker = this.growingIO.dataStore.getTracker(eventData.trackingId);
+    const { requestTimeout } = this.growingIO.dataStore.getTrackerVds(
+      eventData.trackingId
+    );
     const xhr = new XMLHttpRequest();
     // 请求带cookie的现代浏览器
     if (xhr) {
@@ -212,7 +218,7 @@ class Uploader implements UploaderType {
             this.requestFailFn(eventData, 'image');
           };
       xhr.setRequestHeader('Content-Type', 'text/plain;charset=UTF-8');
-      xhr.timeout = tracker.vdsConfig.requestTimeout;
+      xhr.timeout = requestTimeout;
       xhr.send(requestData);
       return;
     } else if ((window as any)?.XDomainRequest) {
@@ -239,7 +245,9 @@ class Uploader implements UploaderType {
     requestData: string,
     requestURL: string
   ) => {
-    const tracker = this.growingIO.dataStore.getTracker(eventData.trackingId);
+    const { requestTimeout } = this.growingIO.dataStore.getTrackerVds(
+      eventData.trackingId
+    );
     const src = `${requestURL}&data=${requestData}`;
     let img = document.createElement('img');
     img.width = 1;
@@ -251,7 +259,7 @@ class Uploader implements UploaderType {
       window.clearTimeout(t);
       t = null;
       this.initiateRequest(eventData.trackingId);
-    }, tracker.vdsConfig.requestTimeout);
+    }, requestTimeout);
     img.onload = () => {
       this.requestSuccessFn(eventData);
       this.clearImage(img);

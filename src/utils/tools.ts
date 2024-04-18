@@ -1,4 +1,5 @@
 import {
+  compact,
   endsWith,
   forEach,
   isArray,
@@ -151,12 +152,14 @@ export const parseStorageValue = (v: string) => {
 export const limitObject = (o: any) => {
   const ob = {};
   if (isObject(o)) {
+    // 移除预置的'&&sendTo'字段
+    unset(o, '&&sendTo');
     forEach(o, (v, k) => {
       const key = toString(k).slice(0, 100);
       if (isObject(v)) {
         ob[key] = limitObject(v);
       } else if (isArray(v)) {
-        ob[key] = v.slice(0, 100);
+        ob[key] = compact(v.slice(0, 100), true);
         ob[key] = ob[key].join('||').slice(0, 1000);
       } else {
         ob[key] = !isNil(v) ? toString(v).slice(0, 1000) : '';
@@ -219,7 +222,7 @@ export const getDynamicAttributes = (properties: any) => {
   if (!isNil(properties)) {
     keys(properties).forEach((k: string) => {
       if (isFunction(properties[k])) {
-        properties[k] = properties[k]();
+        properties[k] = niceTry(() => properties[k]());
       } else if (isObject(properties[k])) {
         unset(properties, k);
       } else if (!isArray(properties[k])) {

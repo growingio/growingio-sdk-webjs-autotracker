@@ -1,6 +1,6 @@
 import {
-  ALLOW_OPTIONS,
-  DEFAULT_SETTING,
+  ALLOW_SET_OPTIONS,
+  DEFAULT_SETTINGS,
   IGNORE_PARAMS,
   PLATFORM,
   STORAGE_KEYS
@@ -12,12 +12,10 @@ import {
   includes,
   isArray,
   isEmpty,
+  isFunction,
   isNaN,
   isNil,
   isNumber,
-  isString,
-  keys,
-  toString,
   typeOf,
   unset
 } from '@/utils/glodash';
@@ -30,13 +28,12 @@ import Page from './page';
 import PageType from '@/types/page';
 
 class DataStore implements DataStoreType {
-  readonly ALLOW_SETTING = { ...DEFAULT_SETTING };
-  readonly allowOptKeys = Object.keys(this.ALLOW_SETTING);
+  readonly ALLOW_SETTING_KEYS = Object.keys(DEFAULT_SETTINGS);
   public currentPage: PageType;
   public eventContextBuilderInst: any;
   public eventContextBuilder: () => any;
   public lastPageEvent: any;
-  // 可以自定义修改的额外参数
+  // 埋点事件通用属性
   public generalProps: any;
   // 事件时长计时器
   public trackTimers: any = {};
@@ -52,12 +49,12 @@ class DataStore implements DataStoreType {
     this.lastPageEvent = {};
     // originalSouceKey初始化
     const { emitter } = this.growingIO;
-    emitter?.on(EMIT_MSG.ON_COMPOSE_AFTER, ({ composedEvent }) => {
-      if (
-        (composedEvent.eventType === 'PAGE' || composedEvent.t === 'page') &&
-        composedEvent.trackingId === this.growingIO.trackingId
-      ) {
-        this.lastPageEvent = composedEvent;
+    emitter?.on(EMIT_MSG.ON_COMMIT_REQUEST, ({ eventData, trackingId }) => {
+      if (eventData.eventType === 'PAGE' || eventData.t === 'page') {
+        this.lastPageEvent[trackingId] = {
+          ...eventData,
+          nextRefferer: window.location.href // 不论是否开启hashtag，上报的referralPage一定是全量的地址
+        };
       }
     });
     this.initializedTrackingIds = [];
@@ -77,12 +74,25 @@ class DataStore implements DataStoreType {
         this.sendVerifiedPage(trackingId, true); // 更新session补发的page要更新时间
       }
     });
+    // 关闭数据采集时要移除所有的计时器
+    this.growingIO.emitter.on(
+      EMIT_MSG.OPTION_CHANGE,
+      ({ optionName, optionValue }) => {
+        if (optionName === 'dataCollect' && optionValue === false) {
+          this.initializedTrackingIds.forEach((trackingId: string) =>
+            this.growingIO.clearTrackTimer(trackingId)
+          );
+        }
+      }
+    );
   }
 
   // 获取采集实例内容 //? 多实例插件会重写该方法
   // eslint-disable-next-line
-  getTracker = (trackingId: string) =>
-    this.growingIO.trackingId === trackingId ? this.growingIO : null;
+  getTrackerVds = (trackingId: string) =>
+    this.growingIO.trackingId === trackingId
+      ? { ...this.growingIO.vdsConfig }
+      : undefined;
 
   // 获取对应实例在存储中的前缀 //? 多实例插件会重写该方法
   // eslint-disable-next-line
@@ -140,9 +150,9 @@ class DataStore implements DataStoreType {
     const { projectId, dataSourceId, appId } = userOptions;
     const configs: any = {};
     // 只处理允许的配置项，之外用户的配置项无视
-    this.allowOptKeys.forEach((k) => {
+    this.ALLOW_SETTING_KEYS.forEach((k) => {
       // 配置项值不存在或类型不合法时置为默认值
-      const altp = (this.ALLOW_SETTING as any)[k].type;
+      const altp = DEFAULT_SETTINGS[k].type;
       let invalid = isArray(altp)
         ? !includes(altp, typeOf(userOptions[k]))
         : typeOf(userOptions[k]) !== altp;
@@ -150,17 +160,15 @@ class DataStore implements DataStoreType {
         invalid = true;
       }
       if (invalid) {
-        configs[k] = (this.ALLOW_SETTING as any)[k].default;
+        configs[k] = DEFAULT_SETTINGS[k].default;
       } else if (k === 'ignoreFields') {
         configs.ignoreFields = userOptions.ignoreFields.filter((o) =>
           includes(IGNORE_PARAMS, o)
         );
       } else {
         configs[k] = userOptions[k];
-        if (includes(['dataCollect', 'autotrack'], k)) {
-          if (!configs[k]) {
-            consoleText(`已关闭${ALLOW_OPTIONS[k]}`, 'info');
-          }
+        if (includes(['dataCollect', 'autotrack'], k) && !configs[k]) {
+          consoleText(`已关闭${ALLOW_SET_OPTIONS[k]}`, 'info');
         }
       }
     });
@@ -221,7 +229,7 @@ class DataStore implements DataStoreType {
       const originalSource = {
         path,
         query,
-        referralPage: document.referrer || getReferralPage()
+        referralPage: document.referrer || getReferralPage(trackingId)
       };
       localStorage.setItem(
         this.getStorageKey(trackingId, 'originalSource'),
@@ -241,50 +249,66 @@ class DataStore implements DataStoreType {
 
   // 全局配置修改
   setOption = (trackingId: string, k: string, v: any) => {
-    const { emitter, userStore, vdsName } = this.growingIO;
-    const { vdsConfig } = this.getTracker(trackingId);
-    // 检查 k
-    const validKey = isString(k) && includes(keys(ALLOW_OPTIONS), k);
-    const validValue =
-      validKey &&
-      typeof v === ((this.ALLOW_SETTING as any)[k]?.type || 'string');
-    const prevConfig = { ...vdsConfig };
-    if (validKey && validValue) {
-      (vdsConfig as any)[k] = v;
-      if (k === 'dataCollect' && prevConfig.dataCollect !== v) {
-        if (v) {
-          // 采集开关打开，重置session，开启新访问（通过session更新自动重新解析页面和重发事件）
-          userStore.setSessionId(trackingId, guid());
-        } else {
-          // 从打开到关闭dataCollect时移除所有事件计时器
-          this.growingIO.clearTrackTimer(trackingId);
-        }
+    const { emitter, userStore } = this.growingIO;
+    const trackerVds = this.getTrackerVds(trackingId);
+    const prevConfig = { ...trackerVds };
+    this.updateVdsConfig(trackingId, { ...trackerVds, [k]: v });
+    if (k === 'dataCollect' && prevConfig.dataCollect !== v) {
+      if (v) {
+        // 采集开关打开，重置session，开启新访问（通过session更新自动重新解析页面和重发事件）
+        userStore.setSessionId(trackingId, guid());
+      } else {
+        // 从打开到关闭dataCollect时移除所有事件计时器
+        this.growingIO.clearTrackTimer(trackingId);
       }
-      // 配置项有变更要全局广播
-      emitter?.emit(EMIT_MSG.OPTION_CHANGE, {
-        trackingId,
-        optionName: k,
-        optionValue: v
-      });
-      // 更新vds中的值
-      window[vdsName][k] = v;
-      return true;
-    } else {
-      callError(`setOption > ${k}`);
-      return false;
     }
+    // 配置项有变更要全局广播
+    emitter?.emit(EMIT_MSG.OPTION_CHANGE, {
+      trackingId,
+      optionName: k,
+      optionValue: v
+    });
   };
 
   // 获取全局配置
   getOption = (trackingId: string, k?: string) => {
-    const { vdsConfig } = this.getTracker(trackingId);
-    if (k && has(vdsConfig, toString(k))) {
-      return (vdsConfig as any)[toString(k)];
-    } else if (isNil(k)) {
-      return { ...vdsConfig };
+    const trackerVds = this.getTrackerVds(trackingId);
+    if (k && has(this.growingIO.vdsConfig, k)) {
+      if (has(trackerVds, k)) {
+        return trackerVds[k];
+      } else {
+        return this.growingIO.vdsConfig[k];
+      }
+    } else if (isEmpty(k)) {
+      return trackerVds;
     } else {
       callError(`getOption > ${k}`);
       return undefined;
+    }
+  };
+
+  // 根据实例更新内存和存储中的vds配置项值
+  updateVdsConfig = (trackingId: string, vds: any) => {
+    const windowVds = window[this.growingIO.vdsName];
+    try {
+      if (trackingId === this.growingIO.trackingId) {
+        this.growingIO.vdsConfig = { ...this.growingIO.vdsConfig, ...vds };
+        window[this.growingIO.vdsName] = {
+          ...windowVds,
+          ...this.growingIO.vdsConfig
+        };
+      } else {
+        this.growingIO.subInstance[trackingId] = {
+          ...this.growingIO.subInstance[trackingId],
+          ...vds
+        };
+        window[this.growingIO.vdsName].subInstance[trackingId] = {
+          ...windowVds.subInstance[trackingId],
+          ...this.growingIO.subInstance[trackingId]
+        };
+      }
+    } catch (error) {
+      consoleText('Internal Error!更新配置项错误!', 'error');
     }
   };
 
@@ -304,14 +328,24 @@ class DataStore implements DataStoreType {
   };
 
   // 发送有校验的page事件
-  sendVerifiedPage = (trackingId: string, forceParse?: boolean) => {
+  sendVerifiedPage = (trackingId: string, forceParse = false) => {
     // 是否需要重新解析页面信息
     if (forceParse) {
       this.currentPage.parsePage();
     }
-    const tracker = this.getTracker(trackingId);
-    if (tracker.vdsConfig.trackPage) {
-      this.currentPage.buildPageEvent(trackingId);
+    const { trackPage } = this.getTrackerVds(trackingId);
+    const { pageListeners, path, query, title, buildPageEvent } =
+      this.currentPage;
+    // 触发业务页面监听
+    if (isFunction(pageListeners[trackingId])) {
+      pageListeners[trackingId]({
+        path,
+        query,
+        title
+      });
+    }
+    if (trackPage) {
+      buildPageEvent(trackingId);
     }
   };
 
@@ -326,13 +360,15 @@ class DataStore implements DataStoreType {
     let event: any = {
       eventType: 'VISIT',
       ...eventContextBuilder(trackingId),
+      title: currentPage.title, // visit事件要单独设一次title以覆盖eventContextBuilder中的lastPage的可能的title错误值
       /**
         document.referrer以下3种情况会取空：
         * 1）直接在地址栏中输入地址跳转
         * 2）直接通过浏览器收藏夹打开
         * 3）从https的网站直接进入一个http协议的网站
         */
-      referralPage: document.referrer || this.currentPage.getReferralPage(),
+      referralPage:
+        document.referrer || this.currentPage.getReferralPage(trackingId),
       timestamp: currentPage.time - 1
     };
     // 配置使用初始来源时，visit使用初始来源数据
@@ -386,9 +422,9 @@ class DataStore implements DataStoreType {
   // 事件的格式转换(同时移除无值的字段)
   eventConverter = (event: any) => {
     const { uploader } = this.growingIO;
-    const { vdsConfig } = this.getTracker(event.trackingId);
+    const { dataCollect } = this.getTrackerVds(event.trackingId);
     // 开启数据采集时才会处理事件、累计全局计数并将合成的事件提交到请求队列
-    if (vdsConfig.dataCollect) {
+    if (dataCollect) {
       event.eventSequenceId = this.getGsid(event.trackingId);
       if (event.eventType === 'LOGIN_USER_ATTRIBUTES') {
         //? 在4.0中用户属性事件不再带timezoneOffset和eventSequenceId字段

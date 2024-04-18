@@ -1,3 +1,5 @@
+import { GrowingIOType } from './growingIO';
+
 export interface UserStoreType {
   // 访问用户id在存储中的名称
   uidStorageName: string;
@@ -25,4 +27,6 @@ export interface UserStoreType {
   getGioId: (trackingId: string) => string;
   // 设置gioId
   setGioId: (trackingId: string, gioId: string) => void;
+  // 老saas存储兼容
+  transferStorage: (trackingId: string, growingIO: GrowingIOType) => void;
 }

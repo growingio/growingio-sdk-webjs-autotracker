@@ -25,12 +25,12 @@ import {
 } from 'gio-web-nodes-parser/build/typings';
 import Page from '@/core/dataStore/page';
 import { addListener, niceTry } from '@/utils/tools';
+import { OriginOptions } from '@/types/dataStore';
 
 let ut;
 const SUPPORT_EVENT_TYPES = [
   'VIEW_CLICK',
   'VIEW_CHANGE',
-  'FORM_SUBMIT',
   'PAGE',
   'CUSTOM',
   'LOGIN_USER_ATTRIBUTES'
@@ -52,16 +52,31 @@ const WINDOW_EVENT = [
 export default class GioHybridAdapter {
   private penetrateHybrid = true;
   private hasHybridBridge: boolean;
-  public hybridConfig: { projectId: string; dataSourceId: string };
+  public hybridConfig: {
+    projectId: string;
+    dataSourceId: string;
+    packageName?: string;
+    appPackage?: string;
+  };
   public onSendBefore: any;
 
   constructor(public growingIO: GrowingIOType) {
     const { emitter, utils } = this.growingIO;
     ut = utils;
-    emitter.on(EMIT_MSG.OPTION_INITIALIZED, ({ trackingId }) => {
-      if (trackingId === this.growingIO.trackingId) {
-        this.onOptionsInit();
-        if (window.GrowingWebViewJavascriptBridge) {
+    emitter.on(
+      EMIT_MSG.OPTION_INITIALIZED,
+      ({
+        trackingId,
+        vdsConfig
+      }: {
+        trackingId: string;
+        vdsConfig: OriginOptions;
+      }) => {
+        this.onOptionsInit(trackingId, vdsConfig);
+        if (
+          this.growingIO.useHybridInherit &&
+          window.GrowingWebViewJavascriptBridge
+        ) {
           const self = this;
           window.GrowingWebViewJavascriptBridge.getDomTree = function () {
             if (arguments.length >= 4) {
@@ -71,11 +86,12 @@ export default class GioHybridAdapter {
           this._addDomChangeListener();
         }
       }
-    });
+    );
   }
 
-  onOptionsInit = () => {
-    const { vdsConfig, emitter } = this.growingIO;
+  // 打通匹配和打通后的处理逻辑
+  onOptionsInit = (trackingId: string, vdsConfig: OriginOptions) => {
+    const { emitter, plugins } = this.growingIO;
     if (isBoolean(vdsConfig.penetrateHybrid)) {
       this.penetrateHybrid = vdsConfig.penetrateHybrid;
     }
@@ -83,9 +99,31 @@ export default class GioHybridAdapter {
     if (bridgeInitialized) {
       // 桥初始化完成即挂载事件监听（无论是否打通，都会给native端发事件数据）
       this.onSendBefore = this.sendBeforeListener;
-      // projectId一致视为打通，web自身就不发数
-      if (this.hybridConfig.projectId === this.growingIO.vdsConfig.projectId) {
-        this.growingIO.useHybridInherit = true;
+      // 不存在已打通的packageName则尝试匹配打通，打通web自身就不发数
+      if (!this.growingIO.useHybridInherit) {
+        const configPackageName =
+          this.hybridConfig.packageName ?? this.hybridConfig.appPackage;
+        // 使用多实例插件时必须传packageName，使用projectId+packageName来判断打通，否则一律视为无法打通
+        if (plugins.gioMultipleInstances) {
+          if (
+            this.hybridConfig.projectId === vdsConfig.projectId &&
+            configPackageName === vdsConfig.packageName
+          ) {
+            this.growingIO.useHybridInherit = trackingId;
+          }
+        } else if (vdsConfig.packageName) {
+          // ? 以后应尽量避免让客户直接利用projectId(ai)来和移动端打通，尽量引导加packageName作为判断依据
+          // 存在packageName，则判断projectId和packageName同时相等为打通
+          if (
+            this.hybridConfig.projectId === vdsConfig.projectId &&
+            configPackageName === vdsConfig.packageName
+          ) {
+            this.growingIO.useHybridInherit = trackingId;
+          }
+        } else if (this.hybridConfig.projectId === vdsConfig.projectId) {
+          // 不存在packageName，则projectId一致即视为打通（向下兼容兜底方案）
+          this.growingIO.useHybridInherit = trackingId;
+        }
       }
     }
     // 打通后添加userId、userKey的变更监听，即打通才允许设值userId和userKey
@@ -93,7 +131,7 @@ export default class GioHybridAdapter {
       emitter?.on(
         EMIT_MSG.SET_USERID,
         ({ newUserId, oldUserId, userKey, trackingId }: any) => {
-          if (trackingId === this.growingIO.trackingId) {
+          if (trackingId === this.growingIO.useHybridInherit) {
             if (this.penetrateHybrid) {
               // 有旧值且新传入的值为空视为清除
               if (!newUserId && oldUserId) {
@@ -120,7 +158,7 @@ export default class GioHybridAdapter {
       emitter?.on(
         EMIT_MSG.SET_USERKEY,
         ({ newUserKey, oldUserKey, userId, trackingId }: any) => {
-          if (trackingId === this.growingIO.trackingId) {
+          if (trackingId === this.growingIO.useHybridInherit) {
             if (this.penetrateHybrid) {
               // 有旧值且新传入的值为空视为清除
               if (!newUserKey && oldUserKey) {
@@ -174,22 +212,38 @@ export default class GioHybridAdapter {
     trackingId: string;
   }) => {
     // 存在桥就要进行转发
-    if (trackingId === this.growingIO.trackingId && this.hasHybridBridge) {
-      // 数据类型处理
-      const nativeData = this.processAttributes({ ...requestData });
-      // 符合转发条件的事件类型
-      if (includes(SUPPORT_EVENT_TYPES, nativeData.eventType)) {
-        if (includes(PENETRATED_EVENT_TYPES, nativeData.eventType)) {
-          if (this.penetrateHybrid) {
-            // 打通事件（目前仅支持用户属性），并且设置穿透用户信息时直接将事件传给native
+    if (this.hasHybridBridge) {
+      const dispatchProcess = () => {
+        // 数据类型处理
+        const nativeData = this.processAttributes({ ...requestData });
+        // 符合转发条件的事件类型
+        if (includes(SUPPORT_EVENT_TYPES, nativeData.eventType)) {
+          if (includes(PENETRATED_EVENT_TYPES, nativeData.eventType)) {
+            if (this.penetrateHybrid) {
+              // 打通事件（目前仅支持用户属性），并且设置穿透用户信息时直接将事件传给native
+              this._dispatchEvent(nativeData);
+            }
+          } else {
+            // 不穿透用户信息时，移除事件中的userId和userKey
+            if (!this.penetrateHybrid) {
+              unset(nativeData, ['userId', 'userKey', 'cs1']);
+            }
             this._dispatchEvent(nativeData);
           }
-        } else {
-          // 不穿透用户信息时，移除事件中的userId和userKey
-          if (!this.penetrateHybrid) {
-            unset(nativeData, ['userId', 'userKey', 'cs1']);
-          }
-          this._dispatchEvent(nativeData);
+        }
+      };
+      if (this.growingIO.useHybridInherit) {
+        // 打通的时候，打通的实例给移动端转发
+        if (trackingId === this.growingIO.useHybridInherit) {
+          dispatchProcess();
+        }
+      } else {
+        // 没有打通时只有主实例且未集成多实例插件时会给移动端转发
+        if (
+          trackingId === this.growingIO.trackingId &&
+          !this.growingIO.plugins.gioMultipleInstances
+        ) {
+          dispatchProcess();
         }
       }
     }

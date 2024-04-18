@@ -8,7 +8,7 @@ import {
   isString,
   toString
 } from '@/utils/glodash';
-import { consoleText, niceCallback, niceTry } from '@/utils/tools';
+import { consoleText, niceTry } from '@/utils/tools';
 import {
   HANDLERS,
   DEPRECATED_HANDLERS,
@@ -35,7 +35,8 @@ const namespace = window[vdsName]?.namespace ?? 'gdp';
   };
 
   const gioInstance: any = new GrowingIO();
-
+  const canIUse = (handlerName: string) =>
+    includes(HANDLERS, handlerName) && !!gioInstance[handlerName];
   gdp = function () {
     const handlerName = arguments[0];
     let trackingId = 'g0';
@@ -61,7 +62,7 @@ const namespace = window[vdsName]?.namespace ?? 'gdp';
             ...userOptions,
             projectId,
             dataSourceId,
-            appId,
+            appId: appId || userOptions.appId,
             trackingId
           });
         } else {
@@ -84,10 +85,7 @@ const namespace = window[vdsName]?.namespace ?? 'gdp';
     } else if (includes(DEPRECATED_HANDLERS, handler)) {
       consoleText(`方法 ${toString(handler)} 已被弃用，请移除!`, 'warn');
     } else if (handler === 'canIUse') {
-      niceCallback(
-        arguments[2],
-        includes(HANDLERS, arguments[1]) && !!gioInstance[arguments[1]]
-      );
+      return canIUse(arguments[1]);
     } else {
       consoleText(`不存在名为 ${toString(handler)} 的方法调用!`, 'error');
     }
@@ -95,7 +93,8 @@ const namespace = window[vdsName]?.namespace ?? 'gdp';
       ...window[vdsName],
       _gr_ignore_local_rule: window._gr_ignore_local_rule ?? false,
       gioSDKVersion: gioInstance.sdkVersion,
-      gioSDKFull: gioInstance.gioSDKFull
+      gioSDKFull: gioInstance.gioSDKFull,
+      canIUse
     };
   };
 

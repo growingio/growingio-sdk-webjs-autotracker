@@ -3,31 +3,22 @@
  * 用途：用于提供多实例以向指定项目和数据源发数的插件。
  */
 
+import { EXTEND_EVENT } from '@/types/events';
 import { GrowingIOType } from '@/types/growingIO';
-import { hashCode } from '@/utils/tools';
-import { toString, unset } from '@/utils/glodash';
+import { hashCode, niceTry } from '@/utils/tools';
+import { includes, isString, toString, unset } from '@/utils/glodash';
 import EMIT_MSG from '@/constants/emitMsg';
 
 export default class GioMultipleInstances {
-  public subTrackingIds: string[];
   constructor(public growingIO: GrowingIOType) {
-    this.subTrackingIds = [];
-    this.growingIO.emitter.on(EMIT_MSG.OPTION_INITIALIZED, ({ trackingId }) => {
-      // 是主实例
-      if (
-        !this.growingIO.trackingId ||
-        trackingId === this.growingIO.trackingId
-      ) {
-        // 自动重写部分代码以实现多实例功能
+    this.growingIO.emitter.on(EMIT_MSG.ON_SDK_INITIALIZE_BEFORE, () => {
+      // 实例化完成自动重写部分代码以实现多实例功能
+      if (!this.growingIO.trackingId) {
         this.rewriteDataStore();
       }
-      // 是子实例
-      if (
-        this.growingIO.trackingId &&
-        this.growingIO.trackingId !== trackingId
-      ) {
-        // 把所有已初始化过的子实例trackingId保存下来方便预定义事件和无埋点事件广播时调用
-        this.subTrackingIds.push(trackingId);
+      // 挂载子实例集合对象
+      if (!this.growingIO.subInstance) {
+        this.growingIO.subInstance = {};
       }
     });
   }
@@ -39,14 +30,15 @@ export default class GioMultipleInstances {
 
   // 重写dataStore中的部分内容
   rewriteDataStore = () => {
-    // 挂载子实例集合对象
-    this.growingIO.subInstance = {};
-
-    // 获取采集实例
-    this.growingIO.dataStore.getTracker = (trackingId: string) => {
-      return this.growingIO.trackingId === trackingId
-        ? this.growingIO
-        : this.growingIO.subInstance[trackingId];
+    // 获取采集的配置和通用埋点属性
+    this.growingIO.dataStore.getTrackerVds = (trackingId: string) => {
+      if (this.growingIO.trackingId === trackingId) {
+        const vds = { ...this.growingIO.vdsConfig };
+        unset(vds, 'subInstance');
+        return vds;
+      } else {
+        return this.growingIO.subInstance[trackingId];
+      }
     };
 
     // 获取存储key前缀
@@ -58,7 +50,7 @@ export default class GioMultipleInstances {
       ) {
         return vdsConfig.projectId;
       } else {
-        const subVdsConfig: any = subInstance[trackingId]?.vdsConfig || {};
+        const subVdsConfig: any = subInstance[trackingId] || {};
         return toString(
           hashCode(
             '' + subVdsConfig.projectId + subVdsConfig.dataSourceId,
@@ -89,14 +81,13 @@ export default class GioMultipleInstances {
           'debug',
           'forceLogin',
           'hashtag',
+          'originalSource',
           'performance',
-          'storageType'
+          'storageType',
+          'touch'
         ]);
         // 子实例的配置挂在subInstance下，以trackingId作为key值存储
-        this.growingIO.subInstance[options.trackingId] = {
-          vdsConfig: trackerOptions,
-          generalProps: {}
-        };
+        this.growingIO.subInstance[options.trackingId] = trackerOptions;
         window[this.growingIO.vdsName].subInstance = {
           ...(window[this.growingIO.vdsName].subInstance ?? {}),
           [options.trackingId]: trackerOptions
@@ -105,11 +96,49 @@ export default class GioMultipleInstances {
       trackerOptions.trackingId = options.trackingId;
       return trackerOptions;
     };
+
+    // 多实例时处理复制发送
+    const originFunction = this.growingIO.dataStore.eventConverter;
+    const self = this;
+    this.growingIO.dataStore.eventConverter = function (...args) {
+      const event: EXTEND_EVENT = args[0];
+      // 埋点事件使用合并后的发送目标发送
+      if (event.eventType === 'CUSTOM') {
+        const sendTo = [event.trackingId];
+        niceTry(() => {
+          event['&&sendTo'].forEach((s) => {
+            // 合法且不重复的实例
+            if (
+              isString(s) &&
+              self.growingIO.dataStore.getTrackerVds(s) &&
+              !includes(sendTo, s)
+            ) {
+              sendTo.push(s);
+            }
+          });
+        });
+        unset(event, '&&sendTo');
+        sendTo.forEach((trackingId: string) => {
+          const { eventContextBuilder } = self.growingIO.dataStore;
+          originFunction.call(this, {
+            ...event,
+            ...eventContextBuilder(trackingId)
+          });
+        });
+      } else {
+        // 其他事件直接发给指定调用实例
+        originFunction.call(this, event);
+      }
+    };
   };
 
   onSendBefore = ({ requestData: event }: any) => {
     // 不是主实例的事件由多实例插件来提交
     if (event.trackingId !== this.growingIO.trackingId) {
+      // 子实例和移动端打通时不再发送数据
+      if (event.trackingId === this.growingIO.useHybridInherit) {
+        return false;
+      }
       this.growingIO.uploader.sendEvent(event);
     }
   };

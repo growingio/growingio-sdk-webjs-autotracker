@@ -1,6 +1,6 @@
 import { GrowingIOType } from '@/types/growingIO';
 import { includes, isEmpty } from '@/utils/glodash';
-import { addListener, niceTry } from '@/utils/tools';
+import { addListener, limitObject, niceTry } from '@/utils/tools';
 
 class Page {
   public domain: string;
@@ -14,9 +14,15 @@ class Page {
   public lastNoHashHref: string;
   // 上一个用于做对比取数用的location对象，不论是否开启hashtag都取浏览器解析的值，不用担心自己排除hash会出bug
   public lastLocation: any;
+  // 页面监听
+  public pageListeners: any;
+  // 页面属性(下一次发page事件[sendPage或自动page]时取用即删除)
+  public pageProps: any;
   constructor(public growingIO: GrowingIOType) {
-    this.title = document.title.slice(0, 255);
+    this.title = niceTry(() => document.title.slice(0, 255)) ?? '';
     this.lastLocation = { ...window.location };
+    this.pageListeners = {};
+    this.pageProps = {};
   }
 
   // 解析页面数据(地址、参数、hash)
@@ -60,21 +66,21 @@ class Page {
   };
 
   // 获取来源页面地址
-  getReferralPage = () => {
+  getReferralPage = (trackingId: string) => {
     const {
       dataStore: { lastPageEvent }
     } = this.growingIO;
+    const lpv = lastPageEvent[trackingId];
     // path相等就是补发，就要取上一个page事件里的referralPage
-    return lastPageEvent?.path === this.path &&
-      (lastPageEvent?.query ?? '') === (this.query ?? '')
-      ? lastPageEvent?.referralPage
-      : lastPageEvent?.path
-      ? this.lastHref // 不论是否开启hashtag，上报的referralPage一定是全量的地址
-      : document.referrer;
+    if (lpv?.path === this.path && (lpv?.query ?? '') === (this.query ?? '')) {
+      return lpv?.referralPage;
+    } else {
+      return lpv?.path ? lpv?.nextRefferer : document.referrer;
+    }
   };
 
   // 页面触发事件
-  pageListener = () => {
+  handlePage = () => {
     const {
       vdsConfig: { hashtag },
       dataStore
@@ -91,10 +97,7 @@ class Page {
       this.parsePage();
       // 发送page事件
       dataStore.initializedTrackingIds.forEach((trackingId: string) => {
-        const tracker = dataStore.getTracker(trackingId);
-        if (tracker?.vdsConfig?.trackPage) {
-          this.buildPageEvent(trackingId);
-        }
+        dataStore.sendVerifiedPage(trackingId);
       });
     }
   };
@@ -109,7 +112,7 @@ class Page {
         () =>
           (window.history.pushState = function () {
             pushState.apply(window.history, arguments);
-            setTimeout(self.pageListener);
+            setTimeout(self.handlePage);
           })
       );
     }
@@ -118,16 +121,16 @@ class Page {
         () =>
           (window.history.replaceState = function () {
             replaceState.apply(window.history, arguments);
-            setTimeout(self.pageListener);
+            setTimeout(self.handlePage);
           })
       );
     }
     // back、forward、go事件会触发popstate事件（pushState和replaceState不会触发）
-    addListener(window, 'popstate', this.pageListener);
+    addListener(window, 'popstate', this.handlePage);
     // hash路由要单独监听
     const { hashtag } = this.growingIO.vdsConfig;
     if (hashtag) {
-      addListener(window, 'hashchange', this.pageListener);
+      addListener(window, 'hashchange', this.handlePage);
     }
   };
 
@@ -139,17 +142,24 @@ class Page {
     let event = {
       eventType: 'PAGE',
       ...eventContextBuilder(trackingId),
+      title: this.title, // page事件要单独设一个title以覆盖eventContextBuilder中的lastPage的title错误值
       protocolType: location.protocol.substring(
         0,
         location.protocol.length - 1
       ),
-      referralPage: this.getReferralPage()
+      referralPage: this.getReferralPage(trackingId),
+      timestamp: this.time
     };
     // 传入参数生成的page事件取值为传入参数
-    if (!isEmpty(props)) {
-      event = { ...event, ...props };
+    if (!isEmpty(props) && props.title) {
+      event.title = props.title;
     }
-    event.timestamp = this.time;
+    // 添加页面属性
+    const pageProps = niceTry(() => this.pageProps[trackingId]);
+    if (!isEmpty(pageProps)) {
+      event.attributes = limitObject(pageProps);
+      niceTry(() => (this.pageProps[trackingId] = {}));
+    }
     eventConverter(event);
     // 更新给用于比对的lastHref、lastNoHashHref、lastLocation
     this.lastHref = window.location.href;

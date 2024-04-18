@@ -146,10 +146,8 @@ export default class GioABTest {
 
   // 生成存储的hash key
   getHashKey = (trackingId: string, layerId: string | number) => {
-    const {
-      userStore: { getUid },
-      vdsConfig: { projectId }
-    } = this.growingIO;
+    const { getUid } = this.growingIO.userStore;
+    const { projectId } = this.growingIO.dataStore.getTrackerVds(trackingId);
     return hashCode(`${trackingId}#${projectId}#${getUid()}#${layerId}`, true);
   };
 
@@ -208,7 +206,7 @@ export default class GioABTest {
     const { projectId, dataSourceId } =
       trackingId === this.growingIO.trackingId
         ? this.getMainConfigs()
-        : dataStore.getTracker(trackingId).vdsConfig;
+        : dataStore.getTrackerVds(trackingId);
     const xhr = new XMLHttpRequest();
     if (xhr) {
       xhr.open('POST', this.url[trackingId], true);

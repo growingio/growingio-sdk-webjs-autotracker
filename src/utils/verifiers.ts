@@ -21,19 +21,32 @@ export const verifyId = (o: string | number) =>
 
 export const initialCheck = (growingIO: GrowingIOType, args: any) => {
   // ?重复初始化由init方法内部判断
+  const projectId = toString(args[0]);
+  const dataSourceId = toString(args[1]);
   // 参数为空校验
   const userOptions = (args.length === 4 ? args[3] : args[2]) || {};
-  if (!args[0] || !args[1]) {
+  if (!projectId || !dataSourceId) {
     consoleText(
-      'SDK初始化失败，请使用 gdp("init", "您的GrowingIO项目 accountId", "您项目的 dataSourceId", "您的小程序 AppId（可选）", options: { host: "您的数据上报地址host" }); 进行初始化!',
+      'SDK初始化失败，请使用 gdp("init", "您的GrowingIO项目 accountId", "您项目的 dataSourceId", options: { host: "您的数据上报地址host" }); 进行初始化!',
       'error'
     );
     return false;
   }
+  const gioSDKInitialized = growingIO.dataStore.initializedTrackingIds.some(
+    (tid: string, index: number) => {
+      const vds =
+        index === 0 ? growingIO.vdsConfig : growingIO.subInstance[tid];
+      return vds.projectId === projectId && vds.dataSourceId === dataSourceId;
+    }
+  );
+  if (gioSDKInitialized) {
+    consoleText('SDK初始化失败，重复初始化，请检查初始化参数!', 'error');
+    return false;
+  }
   return {
-    projectId: toString(args[0]),
-    dataSourceId: toString(args[1]),
-    appId: toString(args.length === 4 ? args[2] : ''),
+    projectId,
+    dataSourceId,
+    appId: userOptions.appId || toString(args.length === 4 ? args[2] : ''),
     userOptions
   };
 };

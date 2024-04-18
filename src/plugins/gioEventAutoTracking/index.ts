@@ -183,14 +183,28 @@ export default class GioEventAutoTracking {
           console.log('Action：', e.type, Date.now());
         }
         if (fullXpath) {
-          this.buildInteractiveEvent(this.growingIO.trackingId, e, info);
-          // 子实例暂无法支持圈选，所以上报无埋点事件无意义
-          // dataStore.initializedTrackingIds.forEach((trackingId: string) => {
-          //   const tracker = dataStore.getTracker(trackingId);
-          //   if (tracker?.vdsConfig?.autotrack) {
-          //     this.buildInteractiveEvent(trackingId, e, info);
-          //   }
-          // });
+          const {
+            trackingId,
+            useEmbeddedInherit,
+            useHybridInherit,
+            dataStore
+          } = this.growingIO;
+          // 主实例无埋点
+          this.buildInteractiveEvent(trackingId, e, info);
+          // 存在与小程序打通的实例且不是主实例时，打通实例补发一份无埋点
+          if (useEmbeddedInherit && trackingId !== useEmbeddedInherit) {
+            const { autotrack } = dataStore.getTrackerVds(useEmbeddedInherit);
+            if (autotrack) {
+              this.buildInteractiveEvent(useEmbeddedInherit, e, info);
+            }
+          }
+          // 存在与打通的实例且不是主实例时，打通实例补发一份无埋点
+          if (useHybridInherit && trackingId !== useHybridInherit) {
+            const { autotrack } = dataStore.getTrackerVds(useHybridInherit);
+            if (autotrack) {
+              this.buildInteractiveEvent(useHybridInherit, e, info);
+            }
+          }
         }
       }
     });

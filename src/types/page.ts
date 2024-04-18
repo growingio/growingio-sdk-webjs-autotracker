@@ -9,12 +9,16 @@ export default interface PageType {
   domain: string;
   // 页面加载时间
   time: number;
+  // 页面监听
+  pageListeners: any;
+  // 页面属性
+  pageProps: any;
   // 解析页面信息
   parsePage: () => void;
   // 获取来源页面
-  getReferralPage: () => string;
+  getReferralPage: (trackingId: string) => string;
   // 原生history处理
   hookHistory: () => void;
   // 构建页面事件
-  buildPageEvent: (props?: any) => void;
+  buildPageEvent: (trackingId: string, props?: any) => void;
 }

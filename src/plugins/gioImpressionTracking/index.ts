@@ -2,11 +2,14 @@ import EMIT_MSG from '@/constants/emitMsg';
 import { GrowingIOType } from '@/types/growingIO';
 import {
   arrayFrom,
+  compact,
   has,
   head,
   includes,
+  isArray,
   isEmpty,
   isObject,
+  isString,
   lowerFirst
 } from '@/utils/glodash';
 import { addListener, consoleText, limitObject, niceTry } from '@/utils/tools';
@@ -29,18 +32,22 @@ export default class GioImpressionTracking {
     this.sentImps = {};
     if (window.IntersectionObserver && window.MutationObserver) {
       this.initIntersectionObserver();
-      addListener(
-        document,
-        'readystatechange',
-        () => {
-          if (includes(['interactive', 'complete'], document.readyState)) {
-            this.main('listener');
+      if (includes(['interactive', 'complete'], document.readyState)) {
+        this.main('listener');
+      } else {
+        addListener(
+          document,
+          'readystatechange',
+          () => {
+            if (includes(['interactive', 'complete'], document.readyState)) {
+              this.main('listener');
+            }
+          },
+          {
+            once: true
           }
-        },
-        {
-          once: true
-        }
-      );
+        );
+      }
       this.growingIO.emitter?.on(
         EMIT_MSG.OPTION_INITIALIZED,
         ({ trackingId }) => {
@@ -62,8 +69,8 @@ export default class GioImpressionTracking {
   }
 
   // 监听的初始化（先确保页面和sdk都初始化好了，两个的初始化监听都只执行一次）
-  main = (msgType: 'listener' | 'emitter') => {
-    if (msgType === 'listener') {
+  main = (msgType: 'listener' | 'emitter' | 'manual') => {
+    if (includes(['listener', 'manual'], msgType)) {
       // 标记网页已初始化完成
       this.documentReady = true;
       // 如果sdk已经初始化好了，直接初始化监听，没有就等sdk的初始化消息触发
@@ -85,23 +92,40 @@ export default class GioImpressionTracking {
           const { dataset, id } = entry.target;
           // 相交率大于0说明出现在可视范围内
           if (entry.intersectionRatio > 0) {
-            const { eventName, properties } =
-              this.getImpressionProperties(dataset);
+            const dataProperties = this.getImpressionProperties(dataset);
             // 曝光类型判断，单次曝光的需要有id和gio-imp-type字段
             if (id) {
               if (dataset.gioImpType === 'once' && has(this.sentImps, id)) {
                 return;
               } else {
-                this.sentImps[id] = { eventName, properties };
+                this.sentImps[id] = dataProperties;
               }
             }
             // 有埋点事件名就可以上报埋点
-            if (eventName) {
-              // 要直接构建custom事件，不要去调用埋点插件的方法，万一插件没有加载就发不出去了
-              this.buildImpEvent(
-                { eventName, properties },
-                dataset.gioImpSendto || this.growingIO.trackingId
-              );
+            if (dataProperties.eventName) {
+              let sendTargets = [];
+              if (dataset.gioImpSendto) {
+                // 先尝试处理成数组
+                sendTargets = compact(
+                  isArray(dataset.gioImpSendto)
+                    ? dataset.gioImpSendto
+                    : niceTry(() => JSON.parse(dataset.gioImpSendto)) || []
+                );
+                // 在尝试处理字符串
+                if (isEmpty(sendTargets)) {
+                  niceTry(() =>
+                    dataset.gioImpSendto.split(',').forEach((s: string) => {
+                      s =
+                        isString(s) &&
+                        s.trim().replace('[', '').replace(']', '');
+                      if (s) {
+                        sendTargets.push(s);
+                      }
+                    })
+                  );
+                }
+              }
+              this.buildImpEvent(dataProperties, sendTargets);
             }
           }
         });
@@ -195,21 +219,23 @@ export default class GioImpressionTracking {
   };
 
   // 创建半自动曝光事件
-  buildImpEvent = (dataProperties: any, trackingId: string) => {
+  buildImpEvent = (dataProperties: any, sendTargets: string[]) => {
     const { eventName, properties } = dataProperties;
     const {
-      dataStore: { eventContextBuilder, eventConverter, getTracker }
+      trackingId,
+      dataStore: { eventContextBuilder, eventConverter },
+      plugins
     } = this.growingIO;
-    // 发曝光之前要查询对应的tracker是否存在
-    if (getTracker(trackingId)) {
-      const event = {
-        eventType: 'CUSTOM',
-        eventName,
-        attributes: properties,
-        ...eventContextBuilder(trackingId),
-        customEventType: 0
-      };
-      eventConverter(event);
+    const event = {
+      eventType: 'CUSTOM',
+      eventName,
+      attributes: properties,
+      ...eventContextBuilder(trackingId),
+      customEventType: 0
+    };
+    if (plugins.gioMultipleInstances && !isEmpty(sendTargets)) {
+      event['&&sendTo'] = sendTargets;
     }
+    eventConverter(event);
   };
 }

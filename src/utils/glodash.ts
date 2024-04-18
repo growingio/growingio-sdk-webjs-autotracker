@@ -93,16 +93,19 @@ export const dropWhile = (o: any, fn: (currentValue: any) => boolean): any => {
 };
 
 /**
- * 移除数组中非法数据（undefined、null、0、{}、[]、false）
+ * 移除数组中非法数据（undefined、null、{}、[]、false）
  * @param o array
  * @returns new array
  */
-export const compact = (o: any): any => {
+export const compact = (o: any, ignoreZero = false): any => {
   if (isArray(o)) {
     let resIndex = 0;
     const result: any = [];
     for (const value of o) {
       if (value && !isEmpty(value)) {
+        result[resIndex++] = value;
+      }
+      if (ignoreZero && value === 0) {
         result[resIndex++] = value;
       }
     }

@@ -14,9 +14,9 @@ export interface GrowingIOType {
   // sdk初始化标识
   gioSDKInitialized: boolean;
   // 小程序是否打通标识
-  useEmbeddedInherit?: boolean;
+  useEmbeddedInherit?: string;
   // hybrid是否打通标识
-  useHybridInherit?: boolean;
+  useHybridInherit?: string;
   // 所有配置项
   vdsConfig: OriginOptions;
   // 存储实例
@@ -33,10 +33,7 @@ export interface GrowingIOType {
   trackingId: string;
   // 存储子实例的配置和信息
   subInstance: {
-    [key: string]: {
-      vdsConfig: OriginOptions;
-      generalProps: any;
-    };
+    [key: string]: OriginOptions;
   };
   // 工具类
   utils?: any;
@@ -48,22 +45,26 @@ export interface GrowingIOType {
   };
   // 初始化
   init: (options: any) => boolean;
+  // 注册插件
+  registerPlugins: (plugins: any[], callback?: (arg: any) => any) => void;
+  // 获取所有已注册插件
+  getPlugins: (callback: (args?: any) => any[]) => void;
   // 外部调用手动发送visit
   sendVisit: (
     trackingId: string,
     props?: any,
     callback?: (arg: any) => any
   ) => void;
+  // 添加页面变更事件监听
+  setPageListener: (trackingId: string, callback?: (arg?: any) => void) => void;
+  // 设置页面属性
+  setPageAttributes: (trackingId: string, properties: any) => void;
   // 外部调用手动发送page
   sendPage: (
     trackingId: string,
     props?: any,
     callback?: (arg: any) => any
   ) => void;
-  // 注册插件
-  registerPlugins: (plugins: any[], callback?: (arg: any) => any) => void;
-  // 获取所有已注册插件
-  getPlugins: (callback: (args?: any) => any[]) => void;
   // 获取访问用户Id（设备Id）
   getDeviceId: (callback?: (args?: any) => any) => void;
   // 运行中修改配置
@@ -78,22 +79,17 @@ export interface GrowingIOType {
     optionKey: string,
     callback?: (args?: any) => any
   ) => any;
-  // 设置埋点通用属性
-  setGeneralProps: (
-    trackingId: string,
-    properties: any,
-    callback?: (args?: any) => any
-  ) => void;
-  // 清除已设置的埋点通用属性
-  clearGeneralProps: (
-    trackingId: string,
-    properties: string[] | undefined,
-    callback?: (args?: any) => any
-  ) => void;
+  // 设置设备ID，一般为openId
   identify: (
     trackingId: string,
     assignmentId: string | number,
     callback?: (arg?: any) => any
+  ) => void;
+  // 发送用户变量
+  setUserAttributes: (
+    trackingId: string,
+    userAttributes: any,
+    callback?: (args?: any) => any
   ) => void;
   // 设置登录用户Id
   setUserId: (
@@ -104,10 +100,16 @@ export interface GrowingIOType {
   ) => void;
   // 清除登录用户Id
   clearUserId: (trackingId: string, callback?: (arg: any) => any) => void;
-  // 发送用户变量
-  setUserAttributes: (
+  // 设置埋点通用属性
+  setGeneralProps: (
     trackingId: string,
-    userAttributes: any,
+    properties: any,
+    callback?: (args?: any) => any
+  ) => void;
+  // 清除已设置的埋点通用属性
+  clearGeneralProps: (
+    trackingId: string,
+    properties: string[] | undefined,
     callback?: (args?: any) => any
   ) => void;
   // 创建自定义埋点事件
@@ -153,6 +155,8 @@ export interface GrowingIOType {
     trackingId: string,
     callback?: (args?: any) => any
   ) => void;
+  // 手动更新曝光监听
+  updateImpression: (callback?: () => any) => void;
   // 获取ABTest数据
   getABTest?: (
     trackingId: string,
