@@ -1,8 +1,15 @@
+import { EVENT } from '@/types/events';
 import { GrowingIOType } from '@/types/growingIO';
+import PageType from '@/types/page';
 import { includes, isEmpty } from '@/utils/glodash';
-import { addListener, limitObject, niceTry } from '@/utils/tools';
+import {
+  addListener,
+  getDynamicAttributes,
+  limitObject,
+  niceTry
+} from '@/utils/tools';
 
-class Page {
+class Page implements PageType {
   public domain: string;
   public path: string;
   public query: string;
@@ -134,6 +141,18 @@ class Page {
     }
   };
 
+  // 给事件合并页面属性
+  eventSetPageProps = (trackingId: string, event: EVENT) => {
+    const pageProps = niceTry(() => this.pageProps[trackingId][this.path]);
+    if (!isEmpty(pageProps)) {
+      return limitObject({
+        ...event.attributes,
+        ...getDynamicAttributes(pageProps)
+      });
+    }
+    return event.attributes;
+  };
+
   // 构建页面访问事件
   buildPageEvent = (trackingId: string, props?: any) => {
     const {
@@ -154,12 +173,8 @@ class Page {
     if (!isEmpty(props) && props.title) {
       event.title = props.title;
     }
-    // 添加页面属性
-    const pageProps = niceTry(() => this.pageProps[trackingId]);
-    if (!isEmpty(pageProps)) {
-      event.attributes = limitObject(pageProps);
-      niceTry(() => (this.pageProps[trackingId] = {}));
-    }
+    // 合并页面属性
+    event.attributes = this.eventSetPageProps(trackingId, event);
     eventConverter(event);
     // 更新给用于比对的lastHref、lastNoHashHref、lastLocation
     this.lastHref = window.location.href;

@@ -1,3 +1,5 @@
+import { EVENT } from './events';
+
 export default interface PageType {
   // 页面路径
   path: string;
@@ -19,6 +21,8 @@ export default interface PageType {
   getReferralPage: (trackingId: string) => string;
   // 原生history处理
   hookHistory: () => void;
+  // 给事件合并页面属性
+  eventSetPageProps: (trackingId: string, event: EVENT) => any;
   // 构建页面事件
   buildPageEvent: (trackingId: string, props?: any) => void;
 }

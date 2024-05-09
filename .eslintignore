@@ -27,3 +27,7 @@
 /npm-debug.log*
 /yarn-error.log
 junit.xml
+
+# builder
+rollup.config.js
+rollup.plugins.config.js

@@ -14,7 +14,13 @@ import {
   startsWith,
   toString
 } from '@/utils/glodash';
-import { consoleText, hashCode, niceCallback, niceTry } from '@/utils/tools';
+import {
+  consoleText,
+  hashCode,
+  limitObject,
+  niceCallback,
+  niceTry
+} from '@/utils/tools';
 import qs from 'querystringify';
 import EMIT_MSG from '@/constants/emitMsg';
 
@@ -22,6 +28,7 @@ const ABTEST_SIGN_REG = /^\d+_gdp_abt_sign$/;
 const ABTEST_DATA_REG = /^\d+_gdp_abtd$/;
 
 export default class GioABTest {
+  public pluginVersion: string;
   // 独立存储
   public abtStorage: any;
   // 请求间隔时长
@@ -33,6 +40,7 @@ export default class GioABTest {
   // 接口重试计数
   public retryCount: number;
   constructor(public growingIO: GrowingIOType, public options: any) {
+    this.pluginVersion = '__PLUGIN_VERSION__';
     const {
       abServerUrl = 'https://ab.growingio.com',
       requestInterval,
@@ -320,14 +328,14 @@ export default class GioABTest {
     let event = {
       eventType: 'CUSTOM',
       eventName: '$exp_hit',
-      attributes: {
-        $exp_layer_id: layerId,
-        $exp_id: experimentId,
-        $exp_strategy_id: strategyId
-      },
-      ...eventContextBuilder(trackingId),
-      customEventType: 0
+      ...eventContextBuilder(trackingId)
     };
+    event.attributes = limitObject({
+      ...(event.attributes ?? {}),
+      $exp_layer_id: layerId,
+      $exp_id: experimentId,
+      $exp_strategy_id: strategyId
+    });
     eventConverter(event);
   };
 }

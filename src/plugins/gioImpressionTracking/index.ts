@@ -24,11 +24,13 @@ import {
  * 用途：用于提供半自动浏览埋点功能，标记自动监听。
  */
 export default class GioImpressionTracking {
+  public pluginVersion: string;
   private mutationObserver: any;
   private intersectionObserver: any;
   private documentReady = false;
   private sentImps: any;
   constructor(public growingIO: GrowingIOType) {
+    this.pluginVersion = '__PLUGIN_VERSION__';
     this.sentImps = {};
     if (window.IntersectionObserver && window.MutationObserver) {
       this.initIntersectionObserver();
@@ -229,10 +231,12 @@ export default class GioImpressionTracking {
     const event = {
       eventType: 'CUSTOM',
       eventName,
-      attributes: properties,
-      ...eventContextBuilder(trackingId),
-      customEventType: 0
+      ...eventContextBuilder(trackingId)
     };
+    event.attributes = limitObject({
+      ...(event.attributes ?? {}),
+      ...(isObject(properties) && !isEmpty(properties) ? properties : {})
+    });
     if (plugins.gioMultipleInstances && !isEmpty(sendTargets)) {
       event['&&sendTo'] = sendTargets;
     }

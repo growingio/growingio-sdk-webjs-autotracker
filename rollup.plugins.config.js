@@ -1,3 +1,4 @@
+import * as packageJson from './package.json';
 import { babel } from '@rollup/plugin-babel';
 import alias from '@rollup/plugin-alias';
 import commonjs from '@rollup/plugin-commonjs';
@@ -52,6 +53,7 @@ const configGenerat = ({ folder, input, output, name, format }) => ({
   },
   plugins: [
     replace({
+      __PLUGIN_VERSION__: packageJson.version || '0.0.1',
       'import.meta.vitest': undefined
     }),
     alias({

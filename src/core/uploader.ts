@@ -117,12 +117,7 @@ class Uploader implements UploaderType {
     // 预处理的数据（删除了requestType、trackingId和requestId，可以直接打log和发送）
     const preprocessedData = { ...eventData };
     const sendURL = this.generateURL(eventData.trackingId);
-    unset(preprocessedData, [
-      'requestType',
-      'trackingId',
-      'requestId',
-      'customEventType'
-    ]);
+    unset(preprocessedData, ['requestType', 'trackingId', 'requestId']);
     // 开启debug模式时，打印事件日志
     if (vdsConfig.debug) {
       console.log(

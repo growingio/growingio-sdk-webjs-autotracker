@@ -70,6 +70,8 @@ const namespace = window[vdsName]?.namespace ?? 'gdp';
         }
       } else if (handler === 'registerPlugins') {
         gioInstance.registerPlugins(...args);
+      } else if (includes(['setGeneralProps', 'clearGeneralProps'], handler)) {
+        gioInstance[handler](trackingId, ...args);
       } else if (gioInstance.gioSDKInitialized && gioInstance.vdsConfig) {
         if (includes(INSTANCE_HANDLERS, handler)) {
           niceTry(() =>

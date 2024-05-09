@@ -113,7 +113,9 @@ const EVENT_TYPE: any = {
   change: 'VIEW_CHANGE'
 };
 export default class GioEventAutoTracking {
+  public pluginVersion: string;
   constructor(public growingIO: GrowingIOType) {
+    this.pluginVersion = '__PLUGIN_VERSION__';
     this.growingIO.emitter?.on(
       EMIT_MSG.OPTION_INITIALIZED,
       ({ trackingId }) => {
@@ -217,7 +219,7 @@ export default class GioEventAutoTracking {
     info: GIOWEBNODEINFO
   ) => {
     const {
-      dataStore: { eventContextBuilder, eventConverter }
+      dataStore: { eventContextBuilder, eventConverter, currentPage }
     } = this.growingIO;
     const { skeleton, xcontent, index, content, hyperlink } = info;
     const event = {
@@ -233,6 +235,8 @@ export default class GioEventAutoTracking {
       ],
       ...eventContextBuilder(trackingId)
     };
+    // 合并页面属性
+    event.attributes = currentPage.eventSetPageProps(trackingId, event);
     eventConverter(event);
   };
 }

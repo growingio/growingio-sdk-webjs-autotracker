@@ -50,6 +50,7 @@ const WINDOW_EVENT = [
 ];
 
 export default class GioHybridAdapter {
+  public pluginVersion: string;
   private penetrateHybrid = true;
   private hasHybridBridge: boolean;
   public hybridConfig: {
@@ -61,6 +62,7 @@ export default class GioHybridAdapter {
   public onSendBefore: any;
 
   constructor(public growingIO: GrowingIOType) {
+    this.pluginVersion = '__PLUGIN_VERSION__';
     const { emitter, utils } = this.growingIO;
     ut = utils;
     emitter.on(
@@ -195,11 +197,9 @@ export default class GioHybridAdapter {
           window?.GrowingWebViewJavascriptBridge?.configuration;
       }
       bridgeInitialized = true;
+      ut.consoleText('当前Hybrid模式', 'info');
     } else {
-      ut.consoleText(
-        'gioHybridAdapter：当前不存在 GrowingWebViewJavascriptBridge，Web模式。',
-        'info'
-      );
+      ut.consoleText('当前Web模式', 'info');
     }
     return bridgeInitialized;
   };

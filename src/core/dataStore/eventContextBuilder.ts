@@ -1,6 +1,6 @@
 import { GrowingIOType } from '@/types/growingIO';
 import { forEach, includes, isEmpty, unset } from '@/utils/glodash';
-import { niceTry } from '@/utils/tools';
+import { getDynamicAttributes, limitObject, niceTry } from '@/utils/tools';
 
 class EventContextBuilder {
   public minpExtraParams: any;
@@ -9,14 +9,14 @@ class EventContextBuilder {
   }
 
   // 通用字段组装
-  main = (trackingId?: string) => {
+  main = (trackingId?: string, executeAttributes = true) => {
     // 预置事件或者默认就是发给主实例的事件不需要传trackingId
     if (!trackingId) {
       trackingId = this.growingIO.trackingId;
     }
     const { sdkVersion, useEmbeddedInherit, userStore, dataStore } =
       this.growingIO;
-    const { path, query, title } = dataStore.currentPage;
+    const { path, query, title, getReferralPage } = dataStore.currentPage;
     const trackerVds = dataStore.getTrackerVds(trackingId);
     const lpv = niceTry(() => dataStore.lastPageEvent[trackingId]) ?? {};
     // 事件主要内容组装
@@ -32,7 +32,7 @@ class EventContextBuilder {
       path,
       platform: trackerVds.platform,
       query,
-      referralPage: dataStore.currentPage.getReferralPage(trackingId) || '',
+      referralPage: getReferralPage(trackingId) || '',
       screenHeight: window.screen.height,
       screenWidth: window.screen.width,
       sdkVersion,
@@ -49,7 +49,16 @@ class EventContextBuilder {
     } else {
       context.userKey = '';
     }
-
+    // 全局属性
+    if (executeAttributes && !isEmpty(dataStore.generalProps[trackingId])) {
+      context.attributes = { ...dataStore.generalProps[trackingId] };
+      // 属性格式化
+      if (!isEmpty(context.attributes)) {
+        context.attributes = limitObject(
+          getDynamicAttributes({ ...context.attributes })
+        );
+      }
+    }
     // 过滤忽略字段（打通时忽略字段可能会失效，字段会继续被小程序覆盖）
     if (!isEmpty(trackerVds.ignoreFields)) {
       (trackerVds.ignoreFields as string[]).forEach((o) => {

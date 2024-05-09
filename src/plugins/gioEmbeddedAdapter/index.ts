@@ -54,6 +54,7 @@ const USER_GQS = ['giocs1', 'gios', 'giou', 'giouserkey'];
 const LOCAL_KEY = 'gdp_query_string';
 
 export default class GioEmbeddedAdapter {
+  public pluginVersion: string;
   // search中的参数对象
   public searchQs: any;
   // hash中的参数对象
@@ -67,6 +68,7 @@ export default class GioEmbeddedAdapter {
   // 存储gio参数的存储对象
   private storage: any;
   constructor(public growingIO: GrowingIOType) {
+    this.pluginVersion = '__PLUGIN_VERSION__';
     this.gqs = {};
     this.customerqs = {};
     this.qsFrom = 'search';

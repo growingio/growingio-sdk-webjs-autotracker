@@ -3,7 +3,13 @@
  */
 import { EVENT_NAME_REG } from '@/constants/regex';
 import { GrowingIOType } from '@/types/growingIO';
-import { isEmpty, isNumber, isString, toString } from '@/utils/glodash';
+import {
+  includes,
+  isEmpty,
+  isNumber,
+  isString,
+  toString
+} from '@/utils/glodash';
 import { consoleText } from '@/utils/tools';
 
 /**
@@ -20,6 +26,14 @@ export const verifyId = (o: string | number) =>
  */
 
 export const initialCheck = (growingIO: GrowingIOType, args: any) => {
+  // 本地环境初始化校验
+  if (
+    includes(['', 'localhost', '127.0.0.1'], location.hostname) &&
+    !window._gr_ignore_local_rule
+  ) {
+    consoleText('当前SDK不允许在本地环境初始化!', 'error');
+    return false;
+  }
   // ?重复初始化由init方法内部判断
   const projectId = toString(args[0]);
   const dataSourceId = toString(args[1]);

@@ -5,9 +5,11 @@
 import { GrowingIOType } from '@/types/growingIO';
 
 export default class GioCompress {
+  public pluginVersion: string;
   private f;
   private keyStrUriSafe;
   constructor(public growingIO: GrowingIOType) {
+    this.pluginVersion = '__PLUGIN_VERSION__';
     this.f = String.fromCharCode;
     this.keyStrUriSafe =
       'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-$';

@@ -60,7 +60,10 @@ export interface DataStoreType {
   getTrackerVds: (trackingId: string) => any;
   getKeyPrefix: (trackingId: string) => string;
   getStorageKey: (trackingId: string, name: StorageKeyType) => string;
-  eventContextBuilder: (trackingId?: string) => any;
+  eventContextBuilder: (
+    trackingId?: string,
+    executeAttributes?: boolean
+  ) => any;
   setOriginalSource: (trackingId: string) => void;
   getOriginalSource: (trackingId: string) => any;
   initTrackerOptions: (userOptions: OriginOptions) => OriginOptions;

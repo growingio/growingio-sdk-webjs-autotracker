@@ -59,6 +59,12 @@ export interface GrowingIOType {
   setPageListener: (trackingId: string, callback?: (arg?: any) => void) => void;
   // 设置页面属性
   setPageAttributes: (trackingId: string, properties: any) => void;
+  // 清空已设置的页面属性
+  clearPageAttributes: (
+    trackingId: string,
+    properties: string[] | undefined,
+    callback?: (args?: any) => any
+  ) => void;
   // 外部调用手动发送page
   sendPage: (
     trackingId: string,
@@ -100,13 +106,13 @@ export interface GrowingIOType {
   ) => void;
   // 清除登录用户Id
   clearUserId: (trackingId: string, callback?: (arg: any) => any) => void;
-  // 设置埋点通用属性
+  // 设置全局通用属性
   setGeneralProps: (
     trackingId: string,
     properties: any,
     callback?: (args?: any) => any
   ) => void;
-  // 清除已设置的埋点通用属性
+  // 清除已设置的全局通用属性
   clearGeneralProps: (
     trackingId: string,
     properties: string[] | undefined,

@@ -2,7 +2,9 @@ import {
   compact,
   endsWith,
   forEach,
+  formatDate,
   isArray,
+  isDate,
   isEmpty,
   isFunction,
   isNil,
@@ -161,6 +163,8 @@ export const limitObject = (o: any) => {
       } else if (isArray(v)) {
         ob[key] = compact(v.slice(0, 100), true);
         ob[key] = ob[key].join('||').slice(0, 1000);
+      } else if (isDate(v)) {
+        ob[key] = formatDate(v);
       } else {
         ob[key] = !isNil(v) ? toString(v).slice(0, 1000) : '';
       }
