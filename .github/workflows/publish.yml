@@ -20,10 +20,6 @@ jobs:
           registry-url: https://registry.npmjs.org/
       - name: Build
         run: rm -r dist && npm run build:es
-      - name: Publish
-        run: yarn publish --tag latest --non-interactive --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTOMATION_TOKEN }}
   release:
     name: Auto Create Release
     runs-on: ubuntu-latest
