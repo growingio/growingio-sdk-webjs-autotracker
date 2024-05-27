@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { babel } from '@rollup/plugin-babel';
+import { terser } from 'rollup-plugin-terser';
 import * as packageJson from './package.json';
 import alias from '@rollup/plugin-alias';
 import commonjs from '@rollup/plugin-commonjs';
@@ -7,7 +8,6 @@ import filesize from 'rollup-plugin-filesize';
 import path from 'path';
 import replace from '@rollup/plugin-replace';
 import resolve from '@rollup/plugin-node-resolve';
-import terser from '@rollup/plugin-terser';
 import typescript from '@rollup/plugin-typescript';
 
 const processENV = process.argv[process.argv.length - 1]
