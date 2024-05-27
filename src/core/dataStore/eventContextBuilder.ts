@@ -79,11 +79,10 @@ class EventContextBuilder {
       trackingId === useEmbeddedInherit &&
       !isEmpty(this.minpExtraParams)
     ) {
-      const originContext = { ...context };
       forEach({ ...context, ...this.minpExtraParams }, (_, k) => {
         if (includes(trackerVds.embeddedIgnore, k)) {
-          // 存在打通忽略的字段时，不进行覆盖，取原值（但是domain要特殊处理）
-          context[k] = originContext[k];
+          // 存在打通忽略的字段时，不进行覆盖，取原值（但是domain要特殊处理）。原值在vds.originValues中，只在小程序打通插件中会塞值
+          context[k] = trackerVds?.originValues[k] ?? context[k];
           if (k === 'domain') {
             context[k] = window.location.host;
           }

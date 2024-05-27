@@ -113,7 +113,15 @@ export default class GioEmbeddedAdapter {
               gqs.giodatacollect
             );
           } else {
-            trackerVds[EMBEDDED_ENUMS[k]] = gqs[k];
+            const embedKey = EMBEDDED_ENUMS[k];
+            // 保留打通字段在未打通之前的值，以方便使用embeddedIgnore配置项时取原来的值
+            if (includes(['domain', 'platform'], embedKey)) {
+              if (!trackerVds.originValues) {
+                trackerVds.originValues = {};
+              }
+              trackerVds.originValues[embedKey] = trackerVds[embedKey];
+            }
+            trackerVds[embedKey] = gqs[k];
           }
         }
       });
