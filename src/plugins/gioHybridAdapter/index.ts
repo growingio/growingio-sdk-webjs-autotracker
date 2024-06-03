@@ -27,7 +27,6 @@ import Page from '@/core/dataStore/page';
 import { addListener, niceTry } from '@/utils/tools';
 import { OriginOptions } from '@/types/dataStore';
 
-let ut;
 const SUPPORT_EVENT_TYPES = [
   'VIEW_CLICK',
   'VIEW_CHANGE',
@@ -63,8 +62,7 @@ export default class GioHybridAdapter {
 
   constructor(public growingIO: GrowingIOType) {
     this.pluginVersion = '__PLUGIN_VERSION__';
-    const { emitter, utils } = this.growingIO;
-    ut = utils;
+    const { emitter } = this.growingIO;
     emitter.on(
       EMIT_MSG.OPTION_INITIALIZED,
       ({
@@ -197,9 +195,6 @@ export default class GioHybridAdapter {
           window?.GrowingWebViewJavascriptBridge?.configuration;
       }
       bridgeInitialized = true;
-      ut.consoleText('当前Hybrid模式', 'info');
-    } else {
-      ut.consoleText('当前Web模式', 'info');
     }
     return bridgeInitialized;
   };

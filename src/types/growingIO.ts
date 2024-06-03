@@ -169,4 +169,10 @@ export interface GrowingIOType {
     layerId: string,
     callback?: (arg: any) => any
   ) => void;
+  // 设置发送前拦截回调
+  setBeforeSendListener?: (
+    trackingId: string,
+    fn: () => any,
+    callback: any
+  ) => void;
 }

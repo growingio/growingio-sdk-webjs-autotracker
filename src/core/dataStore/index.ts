@@ -16,10 +16,19 @@ import {
   isNaN,
   isNil,
   isNumber,
+  isObject,
+  isString,
   typeOf,
   unset
 } from '@/utils/glodash';
-import { guid, isBot, callError, consoleText, niceTry } from '@/utils/tools';
+import {
+  guid,
+  isBot,
+  callError,
+  consoleText,
+  niceTry,
+  limitObject
+} from '@/utils/tools';
 import { DataStoreType, StorageKeyType } from '@/types/dataStore';
 import { GrowingIOType } from '@/types/growingIO';
 import EMIT_MSG from '@/constants/emitMsg';
@@ -39,12 +48,16 @@ class DataStore implements DataStoreType {
   public trackTimers: any = {};
   // 记录已初始化的trackingId，以帮助判断是否再更新sessionId时是否需要发送事件
   public initializedTrackingIds: string[];
+  // 记录发送前拦截回调
+  public beforeSendListener: any;
   constructor(public growingIO: GrowingIOType) {
     this.currentPage = new Page(this.growingIO);
     this.eventContextBuilderInst = new EventContextBuilder(this.growingIO);
     this.eventContextBuilder = this.eventContextBuilderInst?.main;
     // 主实例的埋点事件通用属性
     this.generalProps = {};
+    // 各个实例的发送前拦截回调
+    this.beforeSendListener = {};
     // 保存上一个Page事件，便于下一个Page事件和无埋点事件获取数据
     this.lastPageEvent = {};
     // originalSouceKey初始化
@@ -454,6 +467,34 @@ class DataStore implements DataStoreType {
         composedEvent: { ...convertedEvent },
         trackingId: event.trackingId
       });
+      // 如果有发送前的拦截回调，要先执行并获取执行结果
+      const beforeSendListener = this.beforeSendListener[event.trackingId];
+      if (!isEmpty(beforeSendListener) && isFunction(beforeSendListener)) {
+        const result =
+          niceTry(() => beforeSendListener({ ...convertedEvent })) ?? {};
+        // 如果返回值不是一个对象，且没有事件类型，直接使用原来的事件
+        if (
+          isObject(result) &&
+          !isEmpty(result) &&
+          result.eventType &&
+          result.dataSourceId
+        ) {
+          // 只允许修改以下4个预置属性值
+          ['path', 'query', 'title'].forEach((k) => {
+            if (result[k] && isString(result[k])) {
+              convertedEvent[k] = result[k];
+            }
+          });
+          if (result.attributes && isObject(result.attributes)) {
+            if (isEmpty(result.attributes)) {
+              unset(convertedEvent, 'attributes');
+            } else {
+              convertedEvent.attributes = limitObject(result.attributes);
+            }
+          }
+        }
+      }
+      // 提交请求队列
       uploader.commitRequest({ ...convertedEvent, requestId: guid() });
     }
   };

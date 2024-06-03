@@ -101,6 +101,7 @@ export const INSTANCE_HANDLERS = [
   'removeTimer', // 移除事件计时器
   'sendPage', // 手动发page事件
   'sendVisit', // 手动发visit事件
+  'setBeforeSendListener', // 设置发送前拦截回调
   'setGeneralProps', // 设置埋点通用属性
   'setOption', // 设置配置项
   'setPageAttributes', // 设置页面属性

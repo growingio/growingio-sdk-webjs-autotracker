@@ -78,4 +78,5 @@ export interface DataStoreType {
   lastPageEvent?: any;
   generalProps: any;
   trackTimers: any;
+  beforeSendListener?: any;
 }

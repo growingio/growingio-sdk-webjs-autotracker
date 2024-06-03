@@ -128,7 +128,16 @@ class GrowingIO implements GrowingIOType {
       if (this.vdsConfig.originalSource) {
         this.dataStore.setOriginalSource(vdsConfig.trackingId);
       }
-      consoleText('Gio Web SDK 初始化完成！', 'success');
+      consoleText(
+        `Gio Web SDK 初始化完成！${
+          this.useEmbeddedInherit
+            ? '小程序模式'
+            : this.useHybridInherit
+            ? 'Hybrid模式'
+            : 'Web模式'
+        }`,
+        'success'
+      );
       if (this.vdsConfig.forceLogin) {
         consoleText(
           'forceLogin已开启，请调用 identify 方法设置 openId 以继续上报!',
@@ -687,6 +696,20 @@ class GrowingIO implements GrowingIOType {
   getABTest = (trackingId: string, layerId: string | number, callback: any) => {
     consoleText('获取ABTest数据错误! 请集成ABTest插件后重试!', 'error');
     niceCallback(callback, {});
+  };
+
+  // 设置发送前的拦截回调
+  setBeforeSendListener = (
+    trackingId: string,
+    fn: () => any,
+    callback: any
+  ) => {
+    if (isFunction(fn)) {
+      this.dataStore.beforeSendListener[trackingId] = fn;
+      niceCallback(callback);
+    } else {
+      niceCallback(callback, false);
+    }
   };
 }
 
