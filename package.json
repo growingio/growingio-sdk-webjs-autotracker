@@ -77,6 +77,14 @@
       "import": "./dist/gdp.js",
       "require": "./dist/gdp.js"
     },
+    "./dist/gdp": {
+      "import": "./dist/gdp.js",
+      "require": "./dist/gdp.js"
+    },
+    "./dist/gdp-full": {
+      "import": "./dist/gdp-full.js",
+      "require": "./dist/gdp-full.js"
+    },
     "./gdp": {
       "import": "./dist/gdp.js",
       "require": "./dist/gdp.js"
