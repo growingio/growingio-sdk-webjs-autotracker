@@ -13,6 +13,7 @@ export interface UserOptions {
   gtouchHost?: string;
   hashtag?: boolean;
   ignoreFields?: string[];
+  impressionScale?: number;
   originalSource?: boolean;
   packageName?: string;
   penetrateHybrid?: boolean;

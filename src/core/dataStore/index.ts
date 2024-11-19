@@ -185,6 +185,10 @@ class DataStore implements DataStoreType {
         }
       }
     });
+    // 对使用host配置项进行警告
+    if (userOptions.host) {
+      consoleText('host字段已废弃，指定上报请求地址请使用 serverUrl!', 'error');
+    }
     // session值不允许设置为小数，如果是小数则取整
     configs.sessionExpires = Math.round(configs.sessionExpires);
     // session值小于0或者大于6小时的都认为不合法，改回30分钟
@@ -214,6 +218,11 @@ class DataStore implements DataStoreType {
     // 请求超时时长设置的合法区间校验，值小于等于0ms认为不合法，改回5秒，浏览器默认有2分钟的上限
     if (isNaN(Number(configs.requestTimeout)) || configs.requestTimeout <= 0) {
       configs.requestTimeout = 5000;
+    }
+
+    // 曝光比例不在合法范围内改回默认值
+    if (configs.impressionScale > 1 || configs.impressionScale < 0) {
+      configs.impressionScale = 0;
     }
     return {
       ...(window[this.growingIO.vdsName] ?? {}),

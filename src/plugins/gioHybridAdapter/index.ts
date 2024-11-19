@@ -110,6 +110,9 @@ export default class GioHybridAdapter {
             configPackageName === vdsConfig.packageName
           ) {
             this.growingIO.useHybridInherit = trackingId;
+            this.growingIO.dataStore.updateVdsConfig(trackingId, {
+              hybridLink: true
+            });
           }
         } else if (vdsConfig.packageName) {
           // ? 以后应尽量避免让客户直接利用projectId(ai)来和移动端打通，尽量引导加packageName作为判断依据
@@ -119,10 +122,16 @@ export default class GioHybridAdapter {
             configPackageName === vdsConfig.packageName
           ) {
             this.growingIO.useHybridInherit = trackingId;
+            this.growingIO.dataStore.updateVdsConfig(trackingId, {
+              hybridLink: true
+            });
           }
         } else if (this.hybridConfig.projectId === vdsConfig.projectId) {
           // 不存在packageName，则projectId一致即视为打通（向下兼容兜底方案）
           this.growingIO.useHybridInherit = trackingId;
+          this.growingIO.dataStore.updateVdsConfig(trackingId, {
+            hybridLink: true
+          });
         }
       }
     }

@@ -7,22 +7,17 @@ import { EXTEND_EVENT } from '@/types/events';
 import { GrowingIOType } from '@/types/growingIO';
 import { hashCode, niceTry } from '@/utils/tools';
 import { includes, isString, toString, unset } from '@/utils/glodash';
-import EMIT_MSG from '@/constants/emitMsg';
 
 export default class GioMultipleInstances {
   public pluginVersion: string;
   constructor(public growingIO: GrowingIOType) {
     this.pluginVersion = '__PLUGIN_VERSION__';
-    this.growingIO.emitter.on(EMIT_MSG.ON_SDK_INITIALIZE_BEFORE, () => {
-      // 实例化完成自动重写部分代码以实现多实例功能
-      if (!this.growingIO.trackingId) {
-        this.rewriteDataStore();
-      }
-      // 挂载子实例集合对象
-      if (!this.growingIO.subInstance) {
-        this.growingIO.subInstance = {};
-      }
-    });
+    // 实例化完成自动重写部分代码以实现多实例功能
+    this.rewriteDataStore();
+    // 挂载子实例集合对象
+    if (!this.growingIO.subInstance) {
+      this.growingIO.subInstance = {};
+    }
   }
 
   // 判断当前trackingId实例类型，为主实例还是子实例

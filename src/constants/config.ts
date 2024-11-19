@@ -52,6 +52,8 @@ export const DEFAULT_SETTINGS = {
   hashtag: { type: 'boolean', default: false },
   // 数据上报忽略字段
   ignoreFields: { type: 'array', default: [] },
+  // 曝光比例
+  impressionScale: { type: 'number', default: 0 },
   // 是否使用原始来源信息作为访问事件的参数上报；多实例时仅主实例生效
   originalSource: { type: 'boolean', default: true },
   // 指定打通app的包名

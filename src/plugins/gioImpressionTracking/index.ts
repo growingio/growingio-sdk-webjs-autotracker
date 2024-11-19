@@ -33,7 +33,6 @@ export default class GioImpressionTracking {
     this.pluginVersion = '__PLUGIN_VERSION__';
     this.sentImps = {};
     if (window.IntersectionObserver && window.MutationObserver) {
-      this.initIntersectionObserver();
       if (includes(['interactive', 'complete'], document.readyState)) {
         this.main('listener');
       } else {
@@ -77,23 +76,27 @@ export default class GioImpressionTracking {
       this.documentReady = true;
       // 如果sdk已经初始化好了，直接初始化监听，没有就等sdk的初始化消息触发
       if (this.growingIO.gioSDKInitialized) {
+        this.initIntersectionObserver();
         this.initMutationObserver();
       }
     } else if (msgType === 'emitter' && this.documentReady) {
       // 页面先初始化好了，sdk才初始化好（或者sdk延迟初始化的场景）
+      this.initIntersectionObserver();
       this.initMutationObserver();
     }
   };
 
   // 初始化曝光（视窗相交）监听
   initIntersectionObserver = () => {
+    // 数值要大于0，只能无限趋近于0，等于0的时候会导致没出现就会发曝光
+    const threshold = this.growingIO.vdsConfig?.impressionScale || 0.0000000000001;
     // eslint-disable-next-line
-    this.intersectionObserver = new IntersectionObserver((entries) => {
+    this.intersectionObserver = new IntersectionObserver((entries, observer) => {
       if (!isEmpty(entries)) {
         entries.map((entry: any) => {
           const { dataset, id } = entry.target;
           // 相交率大于0说明出现在可视范围内
-          if (entry.intersectionRatio > 0) {
+          if (entry.intersectionRatio >= threshold) {
             const dataProperties = this.getImpressionProperties(dataset);
             // 曝光类型判断，单次曝光的需要有id和gio-imp-type字段
             if (id) {
@@ -132,6 +135,8 @@ export default class GioImpressionTracking {
           }
         });
       }
+    }, {
+      threshold: [threshold]
     });
   };
 

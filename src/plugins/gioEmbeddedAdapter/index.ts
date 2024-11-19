@@ -103,6 +103,9 @@ export default class GioEmbeddedAdapter {
     ) {
       // 标记打通的实例
       this.growingIO.useEmbeddedInherit = trackingId;
+      this.growingIO.dataStore.updateVdsConfig(trackingId, {
+        minipLink: true
+      });
       // 同步主要配置,防止web的值与小程序值冲突导致发数逻辑错误
       const trackerVds = this.growingIO.dataStore.getTrackerVds(trackingId);
       VDS_EXTRA.forEach((k: string) => {
@@ -137,10 +140,18 @@ export default class GioEmbeddedAdapter {
       userStore.setUserId(trackingId, gqs.giocs1 ?? '');
       userStore.setUserKey(trackingId, gqs.giouserkey ?? '');
       // 以sessionExpires*0.8的时长刷新一次sessionId的有效时间，保证打通时不会因为超时变session
-      window.setInterval(() => {
+      const fn = () => {
         userStore.setSessionId(trackingId, gqs.gios);
-      }, vdsConfig.sessionExpires * 0.8 * 60 * 1000);
-
+      };
+      let t = window.setInterval(
+        fn,
+        vdsConfig.sessionExpires * 0.8 * 60 * 1000
+      );
+      // 添加移除监听，防止内存溢出
+      window.onbeforeunload = () => {
+        window.clearInterval(t);
+        t = undefined;
+      };
       // 打通后保存小程序的通用维度参数供事件构建
       COM_EXTRA.forEach((k: string) => {
         if (has(gqs, k)) {
