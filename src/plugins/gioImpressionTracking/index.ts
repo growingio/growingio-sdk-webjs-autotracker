@@ -33,14 +33,14 @@ export default class GioImpressionTracking {
     this.pluginVersion = '__PLUGIN_VERSION__';
     this.sentImps = {};
     if (window.IntersectionObserver && window.MutationObserver) {
-      if (includes(['interactive', 'complete'], document.readyState)) {
+      if (document.readyState === 'complete') {
         this.main('listener');
       } else {
         addListener(
           document,
           'readystatechange',
           () => {
-            if (includes(['interactive', 'complete'], document.readyState)) {
+            if (document.readyState === 'complete') {
               this.main('listener');
             }
           },
@@ -89,55 +89,59 @@ export default class GioImpressionTracking {
   // 初始化曝光（视窗相交）监听
   initIntersectionObserver = () => {
     // 数值要大于0，只能无限趋近于0，等于0的时候会导致没出现就会发曝光
-    const threshold = this.growingIO.vdsConfig?.impressionScale || 0.0000000000001;
+    const threshold =
+      this.growingIO.vdsConfig?.impressionScale || 0.0000000000001;
     // eslint-disable-next-line
-    this.intersectionObserver = new IntersectionObserver((entries, observer) => {
-      if (!isEmpty(entries)) {
-        entries.map((entry: any) => {
-          const { dataset, id } = entry.target;
-          // 相交率大于0说明出现在可视范围内
-          if (entry.intersectionRatio >= threshold) {
-            const dataProperties = this.getImpressionProperties(dataset);
-            // 曝光类型判断，单次曝光的需要有id和gio-imp-type字段
-            if (id) {
-              if (dataset.gioImpType === 'once' && has(this.sentImps, id)) {
-                return;
-              } else {
-                this.sentImps[id] = dataProperties;
-              }
-            }
-            // 有埋点事件名就可以上报埋点
-            if (dataProperties.eventName) {
-              let sendTargets = [];
-              if (dataset.gioImpSendto) {
-                // 先尝试处理成数组
-                sendTargets = compact(
-                  isArray(dataset.gioImpSendto)
-                    ? dataset.gioImpSendto
-                    : niceTry(() => JSON.parse(dataset.gioImpSendto)) || []
-                );
-                // 在尝试处理字符串
-                if (isEmpty(sendTargets)) {
-                  niceTry(() =>
-                    dataset.gioImpSendto.split(',').forEach((s: string) => {
-                      s =
-                        isString(s) &&
-                        s.trim().replace('[', '').replace(']', '');
-                      if (s) {
-                        sendTargets.push(s);
-                      }
-                    })
-                  );
+    this.intersectionObserver = new IntersectionObserver(
+      (entries) => {
+        if (!isEmpty(entries)) {
+          entries.map((entry: any) => {
+            const { dataset, id } = entry.target;
+            // 相交率大于0说明出现在可视范围内
+            if (entry.intersectionRatio >= threshold) {
+              const dataProperties = this.getImpressionProperties(dataset);
+              // 曝光类型判断，单次曝光的需要有id和gio-imp-type字段
+              if (id) {
+                if (dataset.gioImpType === 'once' && has(this.sentImps, id)) {
+                  return;
+                } else {
+                  this.sentImps[id] = dataProperties;
                 }
               }
-              this.buildImpEvent(dataProperties, sendTargets);
+              // 有埋点事件名就可以上报埋点
+              if (dataProperties.eventName) {
+                let sendTargets = [];
+                if (dataset.gioImpSendto) {
+                  // 先尝试处理成数组
+                  sendTargets = compact(
+                    isArray(dataset.gioImpSendto)
+                      ? dataset.gioImpSendto
+                      : niceTry(() => JSON.parse(dataset.gioImpSendto)) || []
+                  );
+                  // 在尝试处理字符串
+                  if (isEmpty(sendTargets)) {
+                    niceTry(() =>
+                      dataset.gioImpSendto.split(',').forEach((s: string) => {
+                        s =
+                          isString(s) &&
+                          s.trim().replace('[', '').replace(']', '');
+                        if (s) {
+                          sendTargets.push(s);
+                        }
+                      })
+                    );
+                  }
+                }
+                this.buildImpEvent(dataProperties, sendTargets);
+              }
             }
-          }
-        });
+          });
+        }
+      },
+      {
+        threshold: [threshold]
       }
-    }, {
-      threshold: [threshold]
-    });
+    );
   };
 
   // 初始化Dom更改监听
@@ -158,6 +162,14 @@ export default class GioImpressionTracking {
           if (mutRecord.target.dataset?.gioImpTrack) {
             this.intersectionObserver?.observe(mutRecord.target);
           }
+        }
+        // 动态添加节点
+        if (mutRecord.type === 'childList') {
+          mutRecord.addedNodes.forEach((target) => {
+            if (target.dataset?.gioImpTrack) {
+              this.intersectionObserver?.observe(target);
+            }
+          });
         }
       });
     });

@@ -271,8 +271,10 @@ class UserStore implements UserStoreType {
 
   // 用户存储转换逻辑
   transferStorage = (trackingId: string, growingIO: GrowingIOType) => {
-    // 兼容老saas2.0的存储，自动转
+    const storageUId = growingIO.storage.getItem(uidStorageName);
+    // 存储中没有4.x版本的deviceId，但有老saas的deviceId，认为是sdk升级场景，直接迁移数据
     if (
+      !storageUId &&
       trackingId === growingIO.trackingId &&
       this.growingIO.storage.getItem('gr_user_id')
     ) {
@@ -287,10 +289,11 @@ class UserStore implements UserStoreType {
         this.setUid(grUid);
       }
       // 获取老Saas在本地存储的userId
-      this.setUserId(
-        trackingId,
-        storage.getItem(`${projectId}_gr_cs1`) || this.getUserId(trackingId)
-      );
+      const userId =
+        storage.getItem(`${projectId}_gr_cs1`) || this.getUserId(trackingId);
+      if (userId) {
+        this.setUserId(trackingId, userId);
+      }
       // 移除原有老Saas的项
       storage.removeItem('gr_user_id'); // deviceId
       storage.removeItem(`${projectId}_gr_cs1`); // userId

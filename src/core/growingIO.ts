@@ -704,6 +704,10 @@ class GrowingIO implements GrowingIOType {
     fn: () => any,
     callback: any
   ) => {
+    if (toString(fn).indexOf('sendPage') > -1) {
+      consoleText('拦截回调中不能调用sendPage方法，请检查!', 'error');
+      return;
+    }
     if (isFunction(fn)) {
       this.dataStore.beforeSendListener[trackingId] = fn;
       niceCallback(callback);
