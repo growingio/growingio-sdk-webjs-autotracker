@@ -5,6 +5,7 @@
 import { GrowingIOType } from '@/types/growingIO';
 import { has, includes, isEmpty, keys } from '@/utils/glodash';
 import { OriginOptions } from '@/types/dataStore';
+import { pmParse, pmStringify } from '@/utils/tools';
 import EMIT_MSG from '@/constants/emitMsg';
 import LocalStorage from '@/core/storage/local';
 import qs from 'querystringify';
@@ -181,8 +182,13 @@ export default class GioEmbeddedAdapter {
         };
       }
     }
-    // 地址栏重写
-    this.gioURLRewrite();
+    const mainVds = this.growingIO.dataStore.getTrackerVds(
+      this.growingIO.trackingId
+    );
+    if (mainVds.rewriteQuery !== false) {
+      // 地址栏重写
+      this.gioURLRewrite();
+    }
     // 打通的可能是后初始化的实例，所以在重写完成后要重新解析一次页面信息，防止把gio参数带进事件
     this.growingIO.dataStore.currentPage.parsePage();
   };
@@ -192,22 +198,29 @@ export default class GioEmbeddedAdapter {
     const search = window.location.search;
     const hash = window.location.hash;
     const hashSearch = hashtag ? hash.substring(hash.indexOf('?') + 1) : '';
-    const localData = this.storage.getItem(LOCAL_KEY);
-    // qs.parse会自动把参数中的特殊字符给decode
+    const localQs = this.storage.getItem(LOCAL_KEY);
+    // qs.parse会自动把参数中的特殊字符给decode（主要是为了处理gio自带参数）
     const searchQs = qs.parse(search);
+    // pmParse保留原格式，不会处理encode（主要是为了处理客户的参数）
+    const ctSearchQs = pmParse(search);
     const hashQs = qs.parse(hashSearch);
-    const localQs = localData;
+    const ctHashQs = pmParse(hashSearch);
     // gio打通数据优先级url参数>hash参数>cookie参数
-    // 解析出来的参数对象
-    let ogqs = {};
+    // 解析出来的参数对象（主要是为了存储gio自带参数）
+    let origQs = {};
+    // 解析出来的参数对象（主要是为了存储客户的参数）
+    let ctOrigQs = {};
     if (has(searchQs, 'gioprojectid')) {
-      ogqs = searchQs;
+      origQs = searchQs;
+      ctOrigQs = ctSearchQs;
       this.qsFrom = 'search';
     } else if (has(hashQs, 'gioprojectid')) {
-      ogqs = hashQs;
+      origQs = hashQs;
+      ctOrigQs = ctHashQs;
       this.qsFrom = 'hash';
     } else if (has(localQs, 'gioprojectid')) {
-      ogqs = localQs;
+      origQs = localQs;
+      ctOrigQs = localQs;
       this.qsFrom = 'local';
     } else {
       this.qsFrom = 'none';
@@ -222,18 +235,18 @@ export default class GioEmbeddedAdapter {
       ...USER_GQS,
       ...COM_EXTRA
     ];
-    keys(ogqs).forEach((k: string) => {
+    keys(origQs).forEach((k: string) => {
       const lk = k.toLowerCase();
       // 根据定义获取合法的gio参数
       if (includes(GQS_KEY, lk)) {
         // 过滤空值
-        if (!includes(['', 'undefined', 'null', undefined, null], ogqs[k])) {
-          gqs[lk] = ogqs[k];
+        if (!includes(['', 'undefined', 'null', undefined, null], origQs[k])) {
+          gqs[lk] = origQs[k];
           // 转换布尔值
-          if (includes(['true', 'TRUE', true], ogqs[k])) {
+          if (includes(['true', 'TRUE', true], origQs[k])) {
             gqs[lk] = true;
           }
-          if (includes(['false', 'FALSE', false], ogqs[k])) {
+          if (includes(['false', 'FALSE', false], origQs[k])) {
             gqs[lk] = false;
           }
         } else {
@@ -241,12 +254,12 @@ export default class GioEmbeddedAdapter {
         }
       } else {
         // 获取客户业务参数
-        customerqs[k] = ogqs[k];
+        customerqs[k] = ctOrigQs[k];
       }
     });
     this.gqs = gqs;
     this.customerqs = customerqs;
-    return gqs;
+    return { ...this.gqs, ...this.customerqs };
   };
 
   // 重写地址(回拼参数的时候用qs.stringify，把参数中的特殊字符重新encode回去)
@@ -257,12 +270,12 @@ export default class GioEmbeddedAdapter {
     let paramProcessed = false;
     // 如果是从url参数中获取的gio参数，移除gio参数后直接拼地址参数
     if (this.qsFrom === 'search') {
-      nSearch = qs.stringify(this.customerqs, true);
+      nSearch = pmStringify(this.customerqs, true);
       paramProcessed = true;
     }
     // 如果是从hash参数中获取的gio参数，移除gio参数后重写hash拼地址
     if (hashtag && this.qsFrom === 'hash') {
-      nHash = `${nHash.split('?')[0]}${qs.stringify(this.customerqs, true)}`;
+      nHash = `${nHash.split('?')[0]}${pmStringify(this.customerqs, true)}`;
       paramProcessed = true;
     }
     // 如果是从url和hash中解析出参数则重定向地址

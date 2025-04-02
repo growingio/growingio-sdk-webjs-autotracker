@@ -1,5 +1,4 @@
 import {
-  compact,
   forEach,
   includes,
   isArray,
@@ -15,6 +14,7 @@ import {
 import { ALLOW_SET_OPTIONS, DEFAULT_SETTINGS } from '@/constants/config';
 import {
   callError,
+  checkPluginItem,
   consoleText,
   getDynamicAttributes,
   guid,
@@ -175,19 +175,17 @@ class GrowingIO implements GrowingIOType {
   };
 
   // 手动注册插件
-  registerPlugins = (plugins: any, callback?: (arg?: any) => any) => {
-    if (isArray(plugins)) {
-      plugins.forEach((plugin: any, index: number) => {
-        if (isEmpty(plugin) || isNil(plugin)) {
-          consoleText('插件不合法，跳过加载!', 'warn');
-        } else if (plugin.js?.default) {
-          plugins[index] = { ...plugin.js?.default, options: plugin.options };
+  registerPlugins = (plugs: any, callback?: (arg?: any) => any) => {
+    if (isArray(plugs)) {
+      let validPlugins = [];
+      plugs.forEach((plug: any, index: number) => {
+        if (checkPluginItem(plug, index)) {
+          validPlugins.push(plug);
         }
       });
-      plugins = compact(plugins);
-      this.plugins.installAll(plugins);
+      this.plugins.installAll(validPlugins);
     } else {
-      consoleText('插件注册失败，请检查!', 'error');
+      consoleText('插件注册失败，参数不合法，请检查!', 'error');
     }
     // 执行回调
     niceCallback(callback, this.plugins.pluginItems);
@@ -429,14 +427,13 @@ class GrowingIO implements GrowingIOType {
       // 切换userId要重设session补发visit
       const prevId = this.userStore.getGioId(trackingId);
       // IdMapping开启，且传了userKey则需要校验并赋值（userKey要在userId之前设置，才能保证native中的值是正确的）
-      const processedKey =
+      const processedUserKey =
         !isNil(userKey) && toString(userKey).length > 0
           ? toString(userKey).slice(0, 1000)
           : '';
+      this.userStore.setUserKey(trackingId, processedUserKey);
       const { idMapping } = this.dataStore.getTrackerVds(trackingId);
-      if (idMapping) {
-        this.userStore.setUserKey(trackingId, processedKey);
-      } else if (processedKey) {
+      if (!idMapping && processedUserKey) {
         consoleText('您设置了 userKey ，请初始化开启 idMapping!', 'warn');
       }
       this.userStore.setUserId(trackingId, toString(userId).slice(0, 1000));

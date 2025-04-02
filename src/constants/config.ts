@@ -22,7 +22,8 @@ export const STORAGE_KEYS: any = {
   userId: '_gdp_cs1_gioenc',
   userKey: '_gdp_user_key_gioenc',
   gioId: '_gdp_gio_id_gioenc',
-  gqs: '_gdp_query_string_gioenc'
+  gqs: '_gdp_query_string_gioenc',
+  abts: '_gdp_abt_sid'
 };
 
 // SDK系统的默认配置项
@@ -66,6 +67,8 @@ export const DEFAULT_SETTINGS = {
   platform: { type: 'string', default: 'web' },
   // 请求上报的超时时长
   requestTimeout: { type: 'number', default: 5000 },
+  // 与小程序做打通操作时是否重写参数
+  rewriteQuery: { type: 'boolean', default: true },
   // 指定默认上报方式
   sendType: { type: 'string', default: 'beacon' },
   // 数据上报域名

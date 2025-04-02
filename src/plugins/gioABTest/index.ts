@@ -40,6 +40,8 @@ export default class GioABTest {
   public url: any;
   // 接口重试计数
   public retryCount: number;
+  // 标记当前是否为新访问设备
+  public newDevice: boolean;
   constructor(public growingIO: GrowingIOType, public options: any) {
     this.pluginVersion = '__PLUGIN_VERSION__';
     const {
@@ -69,8 +71,47 @@ export default class GioABTest {
         );
       }
     });
+    emitter.on(EMIT_MSG.UID_UPDATE, ({ newUId, oldUId }) => {
+      this.newDevice = true;
+      // 没有旧deviceId说明是第一次进入的新设备
+      if (!oldUId && newUId) {
+        if (isString(abServerUrl)) {
+          const trackingId = this.growingIO.trackingId;
+          this.setVisitSids(trackingId, this.getStorageSession(trackingId));
+        } else if (isObject(abServerUrl)) {
+          keys(abServerUrl).forEach((trackingId: string) => {
+            this.setVisitSids(trackingId, this.getStorageSession(trackingId));
+          });
+        }
+      }
+    });
     this.retryCount = 0;
   }
+
+  // 从存储中获取sessionId
+  // 这里不调用userStore中的getSessionId，UID_UPDATE触发时如果有实例没有初始化完成，就先存空置占位。否则提前生成sessionId会导致bug
+  getStorageSession = (trackingId: string) => {
+    const { storage, dataStore } = this.growingIO;
+    return storage.getItem(dataStore.getStorageKey(trackingId, 'sessionId'));
+  };
+
+  // 获取标记为首次访问的sessionId
+  getVisitSids = (trackingId: string) => {
+    const { dataStore } = this.growingIO;
+    return localStorage.getItem(dataStore.getStorageKey(trackingId, 'abts'));
+  };
+
+  // 设置标记为首次访问的sessionId
+  setVisitSids = (trackingId: string, value: string) => {
+    const { dataStore } = this.growingIO;
+    localStorage.setItem(dataStore.getStorageKey(trackingId, 'abts'), value);
+  };
+
+  // 移除标记为首次访问的sessionId
+  removeVisitSids = (trackingId: string) => {
+    const { dataStore } = this.growingIO;
+    localStorage.removeItem(dataStore.getStorageKey(trackingId, 'abts'));
+  };
 
   // 两个时长的初始化处理
   timeoutCheck = (
@@ -162,6 +203,16 @@ export default class GioABTest {
 
   // 生成数据接口地址
   generateUrl = (trackingId: string, abServerUrl: string) => {
+    // 如果是延迟初始化的实例，当前又是首次进入设备，要补充把session存起来
+    if (this.newDevice && !this.getVisitSids(trackingId)) {
+      // 这里要用userStore中的getSessionId，调用这个方法的时候实例肯定已经初始化了
+      // 如果是新初始化可以通过getSessionId准确获取sessionExpires来生成准确的session值;
+      // 如果是旧实例则直接用存储中的sessionId
+      this.setVisitSids(
+        trackingId,
+        this.growingIO.userStore.getSessionId(trackingId)
+      );
+    }
     if (!startsWith(abServerUrl, 'http')) {
       this.url[
         trackingId
@@ -209,7 +260,7 @@ export default class GioABTest {
     callback: any
   ) => {
     const {
-      userStore: { getUid },
+      userStore: { getUid, getSessionId },
       dataStore
     } = this.growingIO;
     const { projectId, dataSourceId } =
@@ -259,14 +310,20 @@ export default class GioABTest {
           }
         }
       };
-      xhr.send(
-        qs.stringify({
-          accountId: projectId,
-          datasourceId: dataSourceId,
-          distinctId: getUid(),
-          layerId
-        } as any)
-      );
+      const data: any = {
+        accountId: projectId,
+        datasourceId: dataSourceId,
+        distinctId: getUid(),
+        layerId
+      };
+      // 判定是否为新设备访问
+      if (this.getVisitSids(trackingId) === getSessionId(trackingId)) {
+        data.newDevice = true;
+      } else {
+        data.newDevice = false;
+        this.removeVisitSids(trackingId);
+      }
+      xhr.send(qs.stringify(data));
       return;
     } else {
       consoleText('获取ABTest数据失败! 当前环境不支持XMLHttpRequest!', 'error');

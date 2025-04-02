@@ -1,13 +1,14 @@
 {
   "name": "gio-webjs-sdk",
-  "version": "4.2.4",
+  "version": "4.2.6",
   "description": "GrowngIO Web/H5/小程序内嵌页/Hybrid数据采集SDK",
   "dependencies": {
     "array-from": "^2.1.1",
     "gio-web-nodes-parser": "^2.0.10",
     "js-cookie": "^3.0.1",
-    "mitt": "^3.0.0",
-    "querystringify": "^2.2.0"
+    "mitt": "^1.2.0",
+    "querystringify": "^2.2.0",
+    "web-vitals": "^3.0.4"
   },
   "devDependencies": {
     "@babel/core": "^7.17.9",
@@ -38,18 +39,18 @@
     "typescript": "^4.9.5"
   },
   "scripts": {
-    "build:es": "bin/build/sdk-es.sh && bin/build/plugins-es.sh",
-    "build:plugins-es": "bin/build/plugins-es.sh",
-    "build:plugins": "bin/build/plugins-umd.sh",
-    "build:sdk-es": "bin/build/sdk-es.sh",
-    "build:sdk": "bin/build/sdk-umd.sh",
-    "build": "npm run lint && bin/build/sdk-umd.sh && bin/build/plugins-umd.sh",
-    "dev:es": "bin/dev/sdk-es.sh",
-    "dev:plugins-es": "bin/dev/plugins-es.sh",
-    "dev:plugins": "bin/dev/plugins-umd.sh",
-    "dev:sdk-es": "bin/dev/sdk-es.sh",
-    "dev:sdk": "bin/dev/sdk-umd.sh",
-    "dev": "bin/dev/sdk-umd.sh",
+    "build:es": "npm run lint && npm run build:sdk-es && npm run build:plugins-es",
+    "build:plugins-es": "rollup -c rollup.plugins.config.js --es-plugins",
+    "build:plugins": "rollup -c rollup.plugins.config.js --umd-plugins",
+    "build:sdk-es": "rollup -c rollup.config.js --es && rollup -c rollup.config.js --es-full",
+    "build:sdk": "rollup -c rollup.config.js --umd && rollup -c rollup.config.js --umd-full",
+    "build": "npm run lint && npm run build:sdk && npm run build:plugins",
+    "dev:es": "rollup -c rollup.config.js -w --es",
+    "dev:plugins-es": "rollup -c rollup.plugins.config.js -w --es-plugins",
+    "dev:plugins": "rollup -c rollup.plugins.config.js -w --umd-plugins",
+    "dev:sdk-es": "rollup -c rollup.config.js -w --es",
+    "dev:sdk": "rollup -c rollup.config.js -w --umd",
+    "dev": "rollup -c rollup.config.js -w --umd",
     "lint": "eslint src"
   },
   "repository": {

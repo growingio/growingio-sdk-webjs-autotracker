@@ -24,6 +24,7 @@ export interface UserOptions {
   };
   platform?: string;
   requestTimeout?: number;
+  rewriteQuery?: boolean;
   sendType?: 'beacon' | 'xhr' | 'image';
   serverUrl?: string;
   sessionExpires?: number;
@@ -50,7 +51,8 @@ export type StorageKeyType =
   | 'userId'
   | 'userKey'
   | 'gioId'
-  | 'gqs';
+  | 'gqs'
+  | 'abts';
 
 export interface DataStoreType {
   initializedTrackingIds: string[];

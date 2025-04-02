@@ -153,7 +153,11 @@ export const findIndex = (o: any, fn: (currentValue: any) => boolean) => {
  */
 export const includes = (o: any, target: any) => {
   if (typeOf(o) === 'array' || typeOf(o) === 'string') {
-    return o.indexOf(target) >= 0;
+    if (typeOf(target) === 'array') {
+      return target.some((t) => o.indexOf(t) >= 0);
+    } else {
+      return o.indexOf(target) >= 0;
+    }
   } else {
     return false;
   }

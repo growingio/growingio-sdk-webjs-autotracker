@@ -117,8 +117,8 @@ class Page implements PageType {
     if (pushState) {
       niceTry(
         () =>
-          (window.history.pushState = function () {
-            pushState.apply(window.history, arguments);
+          (window.history.pushState = function (...args) {
+            pushState.apply(window.history, args);
             setTimeout(self.handlePage);
           })
       );
@@ -126,8 +126,8 @@ class Page implements PageType {
     if (replaceState) {
       niceTry(
         () =>
-          (window.history.replaceState = function () {
-            replaceState.apply(window.history, arguments);
+          (window.history.replaceState = function (...args) {
+            replaceState.apply(window.history, args);
             setTimeout(self.handlePage);
           })
       );

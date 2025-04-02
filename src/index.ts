@@ -37,8 +37,8 @@ const namespace = window[vdsName]?.namespace ?? 'gdp';
   const gioInstance: any = new GrowingIO();
   const canIUse = (handlerName: string) =>
     includes(HANDLERS, handlerName) && !!gioInstance[handlerName];
-  gdp = function () {
-    const handlerName = arguments[0];
+  gdp = function (...args) {
+    const handlerName = args[0];
     let trackingId = 'g0';
     let handler = handlerName;
     if (handlerName.indexOf('.') > -1) {
@@ -50,10 +50,10 @@ const namespace = window[vdsName]?.namespace ?? 'gdp';
       includes(HANDLERS, handler) &&
       gioInstance[handler]
     ) {
-      const args = drop(arrayFrom(arguments));
+      const argus = drop(arrayFrom(args));
       // 初始化方法单独处理
       if (handler === 'init') {
-        const initialCheckRes: any = initialCheck(gioInstance, args);
+        const initialCheckRes: any = initialCheck(gioInstance, argus);
         if (initialCheckRes) {
           const { projectId, dataSourceId, appId, userOptions } =
             initialCheckRes;
@@ -69,25 +69,25 @@ const namespace = window[vdsName]?.namespace ?? 'gdp';
           return false;
         }
       } else if (handler === 'registerPlugins') {
-        gioInstance.registerPlugins(...args);
+        gioInstance.registerPlugins(...argus);
       } else if (includes(['setGeneralProps', 'clearGeneralProps'], handler)) {
-        gioInstance[handler](trackingId, ...args);
+        gioInstance[handler](trackingId, ...argus);
       } else if (gioInstance.gioSDKInitialized && gioInstance.vdsConfig) {
         if (includes(INSTANCE_HANDLERS, handler)) {
           niceTry(() =>
-            gioInstance.handlerDistribute(trackingId, handler, args)
+            gioInstance.handlerDistribute(trackingId, handler, argus)
           );
         } else {
-          niceTry(() => gioInstance[handler](...args));
+          niceTry(() => gioInstance[handler](...argus));
         }
       } else {
-        gioInstance.emitter.emit(EMIT_MSG.UN_EXECUTE_CALL, arguments);
+        gioInstance.emitter.emit(EMIT_MSG.UN_EXECUTE_CALL, args);
         consoleText('SDK未初始化!', 'error');
       }
     } else if (includes(DEPRECATED_HANDLERS, handler)) {
       consoleText(`方法 ${toString(handler)} 已被弃用，请移除!`, 'warn');
     } else if (handler === 'canIUse') {
-      return canIUse(arguments[1]);
+      return canIUse(args[1]);
     } else {
       consoleText(`不存在名为 ${toString(handler)} 的方法调用!`, 'error');
     }
@@ -111,9 +111,10 @@ const namespace = window[vdsName]?.namespace ?? 'gdp';
   window.gdp.ef = ef;
 
   if (isArray(q) && !isEmpty(q)) {
-    arrayFrom(new Array(q.length)).forEach(() => {
+    const ql = q.length;
+    for (let i = 0; i < ql; i += 1) {
       gdp.apply(null, q.shift());
-    });
+    }
   }
 })();
 

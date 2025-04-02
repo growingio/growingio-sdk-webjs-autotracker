@@ -93,7 +93,7 @@ class UserStore implements UserStoreType {
       storage.getItem(this._getSidKey(trackingId)) ||
       this.getPrevSessionId(trackingId);
     // sessionId默认30分钟有效期(要在初始化配置项里改才生效)
-    const { sessionExpires = 30 } = dataStore.getTrackerVds(trackingId);
+    const { sessionExpires = 30 } = dataStore.getTrackerVds(trackingId) ?? {};
     storage.setItem(
       this._getSidKey(trackingId),
       sId,

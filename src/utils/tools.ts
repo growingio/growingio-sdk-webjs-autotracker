@@ -3,14 +3,18 @@ import {
   endsWith,
   forEach,
   formatDate,
+  includes,
   isArray,
   isDate,
   isEmpty,
   isFunction,
   isNil,
+  isNumber,
   isObject,
   keys,
+  startsWith,
   toString,
+  typeOf,
   unset
 } from '@/utils/glodash';
 
@@ -71,6 +75,23 @@ export const hashCode = (string: string, abs = false) => {
     i++;
   }
   return abs ? Math.abs(hash) : hash;
+};
+
+// 检查插件项是否合法
+export const checkPluginItem = (pluginItem: any, index?: number) => {
+  if (
+    isEmpty(pluginItem) ||
+    isNil(pluginItem) ||
+    !pluginItem.name ||
+    !isFunction(pluginItem.method)
+  ) {
+    consoleText(
+      `插件不合法，跳过加载! ${isNumber(index) ? 'index' + index : ''}`,
+      'warn'
+    );
+    return false;
+  }
+  return true;
 };
 
 // 检查sendBeacon是否支持
@@ -257,4 +278,46 @@ export const getGioFunction = () => {
 export const getMainTrackingId = () => {
   const vds = getVds();
   return vds.trackingId ?? 'g0';
+};
+
+// 手动解析地址参数
+// 以前用querystringify库，但是parse会自动decode参数，会导致最后拼回去的时候可能不是客户想要的值
+export const pmParse = (search: string) => {
+  if (startsWith(search, '?') || includes(search, ['=', '&'])) {
+    const qsValues = {};
+    if (startsWith(search, '?')) {
+      search = search.substring(1);
+    }
+    const kvArray = search.split('&');
+    kvArray.forEach((s: string) => {
+      const kvPairs = s.split('=');
+      const key = kvPairs[0];
+      const value = kvPairs[1] ?? '';
+      if (!isNil(key) && key !== '') {
+        qsValues[key] = value;
+      }
+    });
+    return qsValues;
+  } else {
+    return decodeURIComponent(search);
+  }
+};
+
+// 手动拼接地址参数
+// 以前用querystringify库，但是stringify会自动encode参数，会导致最后拼回去的时候可能不是客户想要的值
+export const pmStringify = (value: any, prefix = false) => {
+  if (typeOf(value) === 'object') {
+    let s = '';
+    forEach(value, (v, k) => {
+      if (s === '') {
+        s = (prefix ? '?' : '') + `${k}=${v}`;
+      } else {
+        s += `&${k}=${v}`;
+      }
+    });
+    return s;
+  }
+  if (typeOf(value) === 'string') {
+    return encodeURIComponent(value);
+  }
 };

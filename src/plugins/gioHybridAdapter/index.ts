@@ -78,9 +78,11 @@ export default class GioHybridAdapter {
           window.GrowingWebViewJavascriptBridge
         ) {
           const self = this;
-          window.GrowingWebViewJavascriptBridge.getDomTree = function () {
-            if (arguments.length >= 4) {
-              return self._getDomTree.apply(this, arguments);
+          window.GrowingWebViewJavascriptBridge.getDomTree = function (
+            ...args
+          ) {
+            if (args.length >= 4) {
+              return self._getDomTree.apply(this, args);
             }
           };
           this._addDomChangeListener();

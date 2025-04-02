@@ -80,9 +80,10 @@ export default class GioMultipleInstances {
           'hashtag',
           'originalSource',
           'performance',
+          'rewriteQuery',
           'storageType',
-          'touch',
-          'subInstance'
+          'subInstance',
+          'touch'
         ]);
         // 子实例的配置挂在subInstance下，以trackingId作为key值存储
         this.growingIO.subInstance[options.trackingId] = trackerOptions;
