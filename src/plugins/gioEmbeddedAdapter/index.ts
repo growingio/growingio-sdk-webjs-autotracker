@@ -3,9 +3,18 @@
  * 用途：用于打通小程序内嵌页。
  */
 import { GrowingIOType } from '@/types/growingIO';
-import { has, includes, isEmpty, keys } from '@/utils/glodash';
+import {
+  has,
+  includes,
+  isEmpty,
+  isObject,
+  isString,
+  keys,
+  startsWith,
+  unset
+} from '@/utils/glodash';
 import { OriginOptions } from '@/types/dataStore';
-import { pmParse, pmStringify } from '@/utils/tools';
+import { consoleText, niceTry, pmParse, pmStringify } from '@/utils/tools';
 import EMIT_MSG from '@/constants/emitMsg';
 import LocalStorage from '@/core/storage/local';
 import qs from 'querystringify';
@@ -29,13 +38,17 @@ const EMBEDDED_ENUMS = {
   gioplatform: 'platform',
   gioplatformversion: 'platformVersion',
   gioscreenheight: 'screenHeight',
-  gioscreenwidth: 'screenWidth'
+  gioscreenwidth: 'screenWidth',
+  // giocircleserverurl: 'circleServerUrl',
+  giocircleroomid: 'circleRoomId'
 };
 const VDS_EXTRA = [
   'gioprojectid',
   'giodatacollect',
   'giodatasourceid',
-  'gioplatform'
+  'gioplatform',
+  // 'giocircleserverurl',
+  'giocircleroomid'
 ];
 const COM_EXTRA = [
   'giodatasourceid',
@@ -52,10 +65,14 @@ const COM_EXTRA = [
   'gioscreenwidth'
 ];
 const USER_GQS = ['giocs1', 'gios', 'giou', 'giouserkey'];
+// 在存储中的gioinfo相关参数
 const LOCAL_KEY = 'gdp_query_string';
+// 与小程序打通时，存储的圈选状态
+const CIRCLE_ERROR_KEY = 'gdp_circle_error';
 
 export default class GioEmbeddedAdapter {
   public pluginVersion: string;
+  public options: any;
   // search中的参数对象
   public searchQs: any;
   // hash中的参数对象
@@ -68,6 +85,12 @@ export default class GioEmbeddedAdapter {
   public qsFrom: 'search' | 'hash' | 'local' | 'none';
   // 存储gio参数的存储对象
   private storage: any;
+  // 小程序圈选状态标记
+  private circleOpen = false;
+  // 小程序圈选上报地址
+  private circleServerUrl: any;
+  // 小程序圈选房间id
+  private circleRoomId: any;
   constructor(public growingIO: GrowingIOType) {
     this.pluginVersion = '__PLUGIN_VERSION__';
     this.gqs = {};
@@ -107,6 +130,13 @@ export default class GioEmbeddedAdapter {
       this.growingIO.dataStore.updateVdsConfig(trackingId, {
         minipLink: true
       });
+      // 如果参数中存在圈选参数，则初始化圈选
+      if (gqs.giocircleroomid) {
+        this.circleInit(gqs.giocircleroomid);
+      } else {
+        // 如果没有圈选参数，则从存储中移除圈选状态
+        this.storage.removeItem(CIRCLE_ERROR_KEY);
+      }
       // 同步主要配置,防止web的值与小程序值冲突导致发数逻辑错误
       const trackerVds = this.growingIO.dataStore.getTrackerVds(trackingId);
       VDS_EXTRA.forEach((k: string) => {
@@ -232,6 +262,8 @@ export default class GioEmbeddedAdapter {
       'gioappid',
       'gioprojectid',
       'giodatacollect',
+      'giocircleurl',
+      'giocircleroomid',
       ...USER_GQS,
       ...COM_EXTRA
     ];
@@ -283,5 +315,105 @@ export default class GioEmbeddedAdapter {
       const URL = `${window.location.pathname}${nSearch || ''}${nHash || ''}`;
       window.history.replaceState(null, document.title, URL);
     }
+  };
+
+  // --------------------- 以下内容是对新版小程序圈选的支持 ---------------------
+
+  // 初始化小程序圈选监听
+  circleInit = (circleRoomId: string) => {
+    consoleText('您已进入小程序圈选模式', 'info');
+    this.circleRoomId = circleRoomId;
+    // 标记圈选状态，防止重复初始化
+    this.circleOpen = true;
+    // 处理圈选上报地址
+    const { useEmbeddedInherit } = this.growingIO;
+    this.circleServerUrl = {};
+    if (this.options?.circleServerUrl) {
+      const { circleServerUrl } = this.options;
+      // 自定义圈选url时，使用自定义url（应对op场景）可选单独字符串和对象两种形式
+      if (isString(circleServerUrl)) {
+        this.generateUrl(useEmbeddedInherit, circleServerUrl);
+      } else if (isObject(circleServerUrl)) {
+        keys(circleServerUrl).forEach((trackingId: string) => {
+          this.generateUrl(trackingId, circleServerUrl[trackingId]);
+        });
+      }
+    } else {
+      // 不填写自定义url时，使用默认url
+      this.generateUrl(useEmbeddedInherit, 'portal.growingio.com');
+    }
+    // 添加事件发送监听，用于发送圈选事件
+    this.growingIO.emitter.on(EMIT_MSG.ON_SEND_AFTER, this.collectorSendFn);
+  };
+
+  // 生成数据接口地址
+  generateUrl = (trackingId: string, circleServerUrl: string) => {
+    if (!startsWith(circleServerUrl, 'http')) {
+      this.circleServerUrl[
+        trackingId
+      ] = `https://${circleServerUrl}/api/public/circle-room/collect?roomId=${this.circleRoomId}`;
+    } else {
+      this.circleServerUrl[
+        trackingId
+      ] = `${circleServerUrl}/api/public/circle-room/collect?roomId=${this.circleRoomId}`;
+    }
+  };
+
+  // 数据采集发送监听回调
+  collectorSendFn = ({ requestData, trackingId }) => {
+    const event = { ...requestData };
+    if (this.circleOpen) {
+      // 过滤仅打通实例的非CUSTOM事件可以圈选
+      if (
+        event.eventType !== 'CUSTOM' &&
+        trackingId === this.growingIO.useEmbeddedInherit
+      ) {
+        unset(event, ['requestType', 'trackingId', 'requestId']);
+        this.circleRequest(trackingId, event);
+      }
+    }
+  };
+
+  // 发起圈选请求
+  circleRequest = (trackingId: string, requestData: any) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', this.circleServerUrl[trackingId], true);
+    xhr.setRequestHeader('Content-Type', 'application/json;charset=UTF-8');
+    xhr.onload =
+      xhr.ontimeout =
+      xhr.onerror =
+      xhr.onabort =
+        ({ target }: any) => {
+          const statusCode = target.status;
+          const data = niceTry(() => JSON.parse(target.responseText));
+          if (!includes([200, 204], statusCode) || !data?.success) {
+            this.circleClose();
+            // 标识h5是否已经弹过圈选错误的提示框，避免重复弹框
+            const circleErrorkey = this.storage.getItem(CIRCLE_ERROR_KEY);
+            if (circleErrorkey !== this.circleRoomId) {
+              this.storage.setItem(CIRCLE_ERROR_KEY, this.circleRoomId);
+              alert(
+                'H5：' +
+                  (data?.message ||
+                    data ||
+                    target.responseText ||
+                    '圈选请求失败，请重试!')
+              );
+            }
+          }
+        };
+    xhr.timeout = this.options?.requestTimeout ?? 5000;
+    xhr.send(JSON.stringify([requestData]));
+  };
+
+  // 圈选结束
+  circleClose = () => {
+    this.circleOpen = false;
+    this.circleServerUrl = '';
+    this.growingIO.emitter.off(EMIT_MSG.ON_SEND_AFTER, this.collectorSendFn);
+    // 断开圈选时删除存储中的圈选字段，防止刷新页面重新进入圈选状态
+    const localQs = this.storage.getItem(LOCAL_KEY);
+    unset(localQs, ['giocircleserverurl', 'giocircleroomid']);
+    this.storage.setItem(LOCAL_KEY, localQs);
   };
 }

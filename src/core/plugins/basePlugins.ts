@@ -1,7 +1,7 @@
 import { GrowingIOType } from '@/types/growingIO';
 import { PluginItem, PluginsType } from '@/types/plugins';
 import {
-  find,
+  findIndex,
   isEmpty,
   isFunction,
   keys,
@@ -44,88 +44,87 @@ class BasePlugins implements PluginsType {
   // 初始化内置插件，不允许客户自己热插拔的插件，内置打包完成
   innerPluginInit = () => {
     EXTRA_PLUGINS.forEach((o) => unset(this.pluginsContext?.plugins, o));
-    keys(this.pluginsContext?.plugins).forEach((key) => {
-      const { name, method }: PluginItem =
-        this.pluginsContext?.plugins[key] ?? {};
-      // 若列表中出现同名插件，以第一个扫描出来的插件为准
-      const isExist = find(this.pluginItems, (o) => o.name === name);
-      if (name && method && !isExist) {
-        this.pluginItems.push({
-          // 优先使用指定插件名
-          name: lowerFirst(name || key),
-          method: method ? method : (growingIO) => {} // eslint-disable-line
-        });
-      }
-    });
-    if (!isEmpty(this.pluginItems)) {
-      this.installAll();
-    }
-  };
-
-  // 挂载插件
-  install = (pluginName: string, pluginItem?: any, options?: any) => {
-    const { emitter } = this.growingIO;
-    const pluginTarget: PluginItem =
-      pluginItem ||
-      find(this.pluginItems, (o: PluginItem) => o.name === pluginName);
-    // 插件已加载或与已加载的插件重名
-    if ((this.growingIO?.plugins as any)[pluginName]) {
-      consoleText(`重复加载插件 ${pluginName} 或插件重名，已跳过加载!`, 'warn');
-      return false;
-    }
-    // 插件列表中不存在要加载的插件
-    if (!pluginTarget) {
-      consoleText(`插件加载失败!不存在名为 ${pluginName} 的插件!`, 'error');
-      return false;
-    }
-    // 将插件实例挂载到growingIO实例上使得其他模块可以调用
-    try {
-      (this.growingIO?.plugins as any)[pluginName] = new (
-        pluginTarget as any
-      ).method(this.growingIO, options);
-      if (pluginItem) {
-        emitter.emit(EMIT_MSG.ON_INSTALL, pluginName);
-        consoleText(`加载插件 ${pluginName}`, 'info');
-      }
-      return true;
-    } catch (error) {
-      this.lifeError(pluginItem, error);
-      consoleText(`插件【${pluginName}】加载异常 ${error}`, 'error');
-      return false;
+    const plugins = keys(this.pluginsContext?.plugins).map(
+      (key) => this.pluginsContext?.plugins[key]
+    );
+    if (!isEmpty(plugins)) {
+      this.installAll(plugins, true);
     }
   };
 
   // 挂载所有插件
-  installAll = (plugins?: PluginItem[]) => {
-    (plugins || this.pluginItems).forEach((o: PluginItem) => {
-      const suc = this.install(
-        o.name,
-        plugins ? o : undefined,
-        plugins ? o?.options : undefined
-      );
-      if (suc && !find(this.pluginItems, (p) => p.name === o.name)) {
-        this.pluginItems.push({
-          // 优先使用指定插件名
-          name: lowerFirst(o.name),
-          // @ts-ignore
-          method: o.method ? o.method : () => {}
-        });
-      }
+  installAll = (plugins?: PluginItem[], silent = false) => {
+    (plugins || this.pluginItems).forEach((pluginItem: PluginItem) => {
+      this.install(pluginItem.name, plugins ? pluginItem : undefined, silent);
     });
+  };
+
+  // 挂载插件
+  install = (pluginName: string, pluginItem?: PluginItem, silent = false) => {
+    const { emitter } = this.growingIO;
+    // 将插件实例挂载到growingIO实例上使得其他模块可以调用
+    try {
+      if (pluginItem) {
+        emitter.emit(EMIT_MSG.ON_INSTALL, pluginItem);
+      }
+      // 若列表中出现同名插件，只会尝试覆盖options
+      const existIndex = findIndex(
+        this.pluginItems,
+        (o) => o.name === pluginName
+      );
+      const plugin = {
+        // 优先使用指定插件名
+        name: lowerFirst(pluginName),
+        method: pluginItem.method || function () {},
+        options: pluginItem.options || {}
+      };
+      if (existIndex > -1) {
+        this.pluginItems[existIndex] = plugin;
+        if (!silent) {
+          consoleText(
+            `重复加载插件 ${pluginName} 或插件重名，已跳过加载!`,
+            'warn'
+          );
+        }
+      } else {
+        this.pluginItems.push(plugin);
+        if (!silent) {
+          consoleText(`加载插件 ${pluginName}`, 'info');
+        }
+        // 直接尝试实例化插件
+        (this.growingIO?.plugins as any)[pluginName] = new (
+          pluginItem as any
+        ).method(this.growingIO, pluginItem.options);
+      }
+      // 赋值options
+      (this.growingIO?.plugins as any)[pluginName].options = pluginItem.options;
+      return true;
+    } catch (error) {
+      this.lifeError(pluginItem, error);
+      if (!silent) {
+        consoleText(`插件【${pluginName}】加载异常 ${error}`, 'error');
+      }
+      return false;
+    }
   };
 
   // 移除插件
   uninstall = (pluginName: string) => {
     unset(this.pluginItems, pluginName);
-    const u = unset(this.growingIO?.plugins, pluginName);
-    if (!u) {
-      consoleText(`卸载插件 ${pluginName} 失败!`, 'error');
+    unset(this.growingIO?.plugins, pluginName);
+    if (pluginName === 'gioEmbeddedAdapter') {
+      this.growingIO.useEmbeddedInherit = '';
     }
-    return u as boolean;
+    if (pluginName === 'gioHybridAdapter') {
+      this.growingIO.useHybridInherit = '';
+    }
+    return true;
   };
 
   // 移除所有插件
   uninstallAll = () => {
+    this.growingIO.useEmbeddedInherit = '';
+    this.growingIO.useHybridInherit = '';
     this.pluginItems.forEach((o: PluginItem) => this.uninstall(o.name));
   };
 

@@ -130,9 +130,9 @@ class GrowingIO implements GrowingIOType {
       }
       consoleText(
         `Gio Web SDK 初始化完成！${
-          this.useEmbeddedInherit
+          this.useEmbeddedInherit === vdsConfig.trackingId
             ? '小程序模式'
-            : this.useHybridInherit
+            : this.useHybridInherit === vdsConfig.trackingId
             ? 'Hybrid模式'
             : 'Web模式'
         }`,

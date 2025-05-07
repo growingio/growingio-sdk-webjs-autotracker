@@ -30,6 +30,7 @@ const ABTEST_DATA_REG = /^\d+_gdp_abtd$/;
 
 export default class GioABTest {
   public pluginVersion: string;
+  public options: any;
   // 独立存储
   public abtStorage: any;
   // 请求间隔时长
@@ -42,18 +43,18 @@ export default class GioABTest {
   public retryCount: number;
   // 标记当前是否为新访问设备
   public newDevice: boolean;
-  constructor(public growingIO: GrowingIOType, public options: any) {
+  constructor(public growingIO: GrowingIOType) {
     this.pluginVersion = '__PLUGIN_VERSION__';
-    const {
-      abServerUrl = 'https://ab.growingio.com',
-      requestInterval,
-      requestTimeout
-    } = options ?? {};
-    const { emitter } = this.growingIO;
-    this.timeoutCheck(requestInterval, requestTimeout);
     this.abtStorage = initGlobalStorage({ storageType: 'localstorage' });
     this.growingIO.getABTest = this.getABTest;
+    const { emitter } = this.growingIO;
     emitter.on(EMIT_MSG.OPTION_INITIALIZED, () => {
+      const {
+        abServerUrl = 'https://ab.growingio.com',
+        requestInterval,
+        requestTimeout
+      } = this.options ?? {};
+      this.timeoutCheck(requestInterval, requestTimeout);
       if (!isEmpty(abServerUrl)) {
         this.abtStorageCheck();
         this.url = {};
@@ -72,6 +73,7 @@ export default class GioABTest {
       }
     });
     emitter.on(EMIT_MSG.UID_UPDATE, ({ newUId, oldUId }) => {
+      const { abServerUrl = 'https://ab.growingio.com' } = this.options ?? {};
       this.newDevice = true;
       // 没有旧deviceId说明是第一次进入的新设备
       if (!oldUId && newUId) {
