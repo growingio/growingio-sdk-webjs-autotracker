@@ -1,8 +1,8 @@
-import { EVENT, EXTEND_EVENT } from '@/types/events';
-import { GrowingIOType } from '@/types/growingIO';
+import { EVENT, EXTEND_EVENT } from '@/types/internal/events';
+import { GrowingIOType } from '@/types/internal/growingIO';
 import { isEmpty, unset, startsWith } from '@/utils/glodash';
 import { isSafari, supportBeacon } from '@/utils/tools';
-import { UploaderType } from '@/types/uploader';
+import { UploaderType } from '@/types/internal/uploader';
 import EMIT_MSG from '@/constants/emitMsg';
 
 class Uploader implements UploaderType {
@@ -177,7 +177,6 @@ class Uploader implements UploaderType {
     requestData: string,
     requestURL: string
   ) => {
-    // eslint-disable-next-line
     const sendStatus = navigator.sendBeacon(requestURL, requestData);
     if (sendStatus) {
       this.requestSuccessFn(eventData);

@@ -1,5 +1,5 @@
-import { GrowingIOType } from '@/types/growingIO';
-import { PluginItem, PluginsType } from '@/types/plugins';
+import { GrowingIOType } from '@/types/internal/growingIO';
+import { PluginItem, PluginsType } from '@/types/internal/plugins';
 import {
   findIndex,
   isEmpty,

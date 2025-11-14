@@ -1,5 +1,5 @@
 // 监听标记，防止重复监听或者内存泄露
-import { GrowingIOType } from '@/types/growingIO';
+import { GrowingIOType } from '@/types/internal/growingIO';
 import { isSafari } from '@/utils/tools';
 import { isArray, isEmpty, isString } from '@/utils/glodash';
 
@@ -57,14 +57,12 @@ export default class Exception {
       );
     } else if (errorEvent.target) {
       // 资源加载错误
+      const target = errorEvent.target as any;
+      const resourceUrl = target?.href || target?.src || target?.currentSrc || 'Unknown resource';
       this.buildErrorEvent(
         {
           error_type: 'Resource loading error',
-          error_content: `at ${
-            (errorEvent.target as any).href ||
-            (errorEvent.target as any).src ||
-            (errorEvent.target as any).currentSrc
-          }`
+          error_content: `at ${resourceUrl}`
         },
         errorEvent.eventTime
       );
@@ -80,10 +78,10 @@ export default class Exception {
         : [];
     // 解析后的错误信息对象
     const errorStackObject = {
-      error_type: message || stacks[0],
+      error_type: message || stacks[0] || 'Unknown error',
       error_content: isSafari()
-        ? (stacks[0] ?? '').trim() || (stacks[1] ?? '').trim()
-        : (stacks[1] ?? '').trim()
+        ? (stacks[0] ?? '').trim() || (stacks[1] ?? '').trim() || 'No stack trace'
+        : (stacks[1] ?? '').trim() || 'No stack trace'
     };
     this.buildErrorEvent(errorStackObject, eventTime);
   };

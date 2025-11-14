@@ -25,11 +25,16 @@ const GioVue = {
 
 // vueError触发器
 const handleVueError = (err: Error, vm: any, info: string, vue: any): void => {
+  if (!err) {
+    return;
+  }
+  
   let data: any = {
-    message: `${err.message}(${info})`,
-    name: err.name,
+    message: `${err.message || 'Unknown error'}(${info || 'Unknown info'})`,
+    name: err.name || 'Error',
     stack: err.stack || []
   };
+  
   if (vue?.version) {
     const mainVersion = Number(head(split(vue?.version, '.')));
     switch (mainVersion) {
@@ -41,18 +46,21 @@ const handleVueError = (err: Error, vm: any, info: string, vue: any): void => {
         break;
       default:
         return;
-        break;
     }
   }
+  
   data = {
     ...data,
     ...errorParse(data.stack)
   };
+  
   const gdp = getGioFunction();
-  gdp('track', 'apm_system_error', {
-    error_type: `${data.name}: ${data.message}`,
-    error_content: `at ${data.functionName} (${data.componentName})`
-  });
+  if (gdp) {
+    gdp('track', 'apm_system_error', {
+      error_type: `${data.name}: ${data.message}`,
+      error_content: `at ${data.functionName || 'Unknown function'} (${data.componentName || 'Unknown component'})`
+    });
+  }
 };
 
 // vue2组件名称获取
@@ -88,17 +96,25 @@ const vue3VmComponent = (vm: any) => {
 
 // 解析错误堆栈
 const errorParse = (errorString: string) => {
+  if (!errorString || typeof errorString !== 'string') {
+    return { title: 'Unknown error', functionName: 'Unknown function' };
+  }
+  
   // 按分行截取为堆栈数组
   const stacks = errorString.split('\n');
-  let functionName;
+  let functionName = 'Unknown function';
+  
   find(stacks, (v) => {
-    const matcher = v.match(/at (.*?) \((.*):(\d{1,}):(\d{1,})\)/);
-    if (isArray(matcher) && !functionName) {
-      functionName = matcher[1];
-      return matcher.length > 0;
+    if (v && typeof v === 'string') {
+      const matcher = v.match(/at (.*?) \((.*):(\d{1,}):(\d{1,})\)/);
+      if (isArray(matcher) && !functionName && matcher[1]) {
+        functionName = matcher[1];
+        return matcher.length > 0;
+      }
     }
   });
-  return { title: stacks[0], functionName };
+  
+  return { title: stacks[0] || 'Unknown error', functionName };
 };
 
 export default GioVue;

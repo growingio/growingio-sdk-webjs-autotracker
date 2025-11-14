@@ -2,7 +2,7 @@
  * 名称：数据加密插件
  * 用途：用于提供上报数据加密。
  */
-import { GrowingIOType } from '@/types/growingIO';
+import { GrowingIOType } from '@/types/internal/growingIO';
 
 export default class GioCompress {
   public pluginVersion: string;
@@ -232,7 +232,6 @@ export default class GioCompress {
     }
 
     // Flush the last char
-    // eslint-disable-next-line
     while (true) {
       context_data_val = context_data_val << 1;
       if (context_data_position === bitsPerChar - 1) {

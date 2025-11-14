@@ -50,7 +50,8 @@ export const fixed = (o: any, n?: number): number => {
 export const head = (o: any): any => {
   try {
     return arrayFrom(o)[0];
-  } catch (error) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  } catch (e) {
     return undefined;
   }
 };
@@ -64,7 +65,8 @@ export const last = (o: any): any => {
   try {
     const ar = arrayFrom(o);
     return ar[ar.length - 1];
-  } catch (error) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  } catch (e) {
     return undefined;
   }
 };
@@ -253,7 +255,7 @@ const hasOwnProperty = Object.prototype.hasOwnProperty;
  * @param key string
  * @returns boolean
  */
-export const has = (o: object, key: string): boolean =>
+export const has = (o: any, key: string): boolean =>
   !isNil(o) && hasOwnProperty.call(o, key);
 
 /**
@@ -345,7 +347,8 @@ export const unset = (
         });
       }
       return true;
-    } catch (error) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (e) {
       return false;
     }
   } else {

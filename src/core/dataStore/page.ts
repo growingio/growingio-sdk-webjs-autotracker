@@ -1,6 +1,6 @@
-import { EVENT } from '@/types/events';
-import { GrowingIOType } from '@/types/growingIO';
-import PageType from '@/types/page';
+import { EVENT } from '@/types/internal/events';
+import { GrowingIOType } from '@/types/internal/growingIO';
+import PageType from '@/types/internal/page';
 import { includes, isEmpty } from '@/utils/glodash';
 import {
   addListener,

@@ -2,7 +2,7 @@
  * 名称：内嵌页适配插件
  * 用途：用于打通小程序内嵌页。
  */
-import { GrowingIOType } from '@/types/growingIO';
+import { GrowingIOType } from '@/types/internal/growingIO';
 import {
   has,
   includes,
@@ -13,11 +13,16 @@ import {
   startsWith,
   unset
 } from '@/utils/glodash';
-import { OriginOptions } from '@/types/dataStore';
-import { consoleText, niceTry, pmParse, pmStringify } from '@/utils/tools';
+import { OriginOptions } from '@/types/internal/dataStore';
+import {
+  consoleText,
+  niceTry,
+  queryParse,
+  queryStringify
+} from '@/utils/tools';
 import EMIT_MSG from '@/constants/emitMsg';
 import LocalStorage from '@/core/storage/local';
-import qs from 'querystringify';
+import { GQS, CustomerQS, EmbeddedStorageType } from './types';
 
 const EMBEDDED_ENUMS = {
   gioprojectid: 'projectId',
@@ -39,7 +44,6 @@ const EMBEDDED_ENUMS = {
   gioplatformversion: 'platformVersion',
   gioscreenheight: 'screenHeight',
   gioscreenwidth: 'screenWidth',
-  // giocircleserverurl: 'circleServerUrl',
   giocircleroomid: 'circleRoomId'
 };
 const VDS_EXTRA = [
@@ -47,7 +51,6 @@ const VDS_EXTRA = [
   'giodatacollect',
   'giodatasourceid',
   'gioplatform',
-  // 'giocircleserverurl',
   'giocircleroomid'
 ];
 const COM_EXTRA = [
@@ -65,37 +68,33 @@ const COM_EXTRA = [
   'gioscreenwidth'
 ];
 const USER_GQS = ['giocs1', 'gios', 'giou', 'giouserkey'];
+const GQS_KEY = [
+  'gioappid',
+  'gioprojectid',
+  'giodatacollect',
+  'giocircleroomid',
+  ...USER_GQS,
+  ...COM_EXTRA
+];
 // 在存储中的gioinfo相关参数
 const LOCAL_KEY = 'gdp_query_string';
 // 与小程序打通时，存储的圈选状态
 const CIRCLE_ERROR_KEY = 'gdp_circle_error';
 
 export default class GioEmbeddedAdapter {
-  public pluginVersion: string;
-  public options: any;
-  // search中的参数对象
-  public searchQs: any;
-  // hash中的参数对象
-  public hashQs: any;
-  // gio参数
-  public gqs: any;
-  // 客户参数
-  public customerqs: any;
-  // gio参数来源
-  public qsFrom: 'search' | 'hash' | 'local' | 'none';
-  // 存储gio参数的存储对象
-  private storage: any;
-  // 小程序圈选状态标记
+  public pluginVersion = '__PLUGIN_VERSION__';
+  public options: Record<string, any> = {};
+  public searchQs: GQS = {};
+  public hashQs: GQS = {};
+  public gqs: GQS = {};
+  public customerQs: CustomerQS = {};
+  public qsFrom: 'search' | 'hash' | 'local' | 'none' = 'search';
+  private storage: EmbeddedStorageType;
   private circleOpen = false;
-  // 小程序圈选上报地址
-  private circleServerUrl: any;
-  // 小程序圈选房间id
-  private circleRoomId: any;
+  private circleServerUrl: Record<string, string> = {};
+  private circleRoomId: string | undefined;
+
   constructor(public growingIO: GrowingIOType) {
-    this.pluginVersion = '__PLUGIN_VERSION__';
-    this.gqs = {};
-    this.customerqs = {};
-    this.qsFrom = 'search';
     this.storage = new LocalStorage();
     this.growingIO.emitter.on(
       EMIT_MSG.OPTION_INITIALIZED,
@@ -132,7 +131,7 @@ export default class GioEmbeddedAdapter {
       });
       // 如果参数中存在圈选参数，则初始化圈选
       if (gqs.giocircleroomid) {
-        this.circleInit(gqs.giocircleroomid);
+        this.circleInit(gqs.giocircleroomid as string, vdsConfig);
       } else {
         // 如果没有圈选参数，则从存储中移除圈选状态
         this.storage.removeItem(CIRCLE_ERROR_KEY);
@@ -166,13 +165,13 @@ export default class GioEmbeddedAdapter {
         dataStore: { eventContextBuilderInst }
       } = this.growingIO;
       // 同步用户信息
-      userStore.setUid(gqs.giou);
-      userStore.setSessionId(trackingId, gqs.gios);
-      userStore.setUserId(trackingId, gqs.giocs1 ?? '');
-      userStore.setUserKey(trackingId, gqs.giouserkey ?? '');
+      userStore.setUid(gqs.giou as string);
+      userStore.setSessionId(trackingId, gqs.gios as string);
+      userStore.setUserId(trackingId, (gqs.giocs1 ?? '') as string);
+      userStore.setUserKey(trackingId, (gqs.giouserkey ?? '') as string);
       // 以sessionExpires*0.8的时长刷新一次sessionId的有效时间，保证打通时不会因为超时变session
       const fn = () => {
-        userStore.setSessionId(trackingId, gqs.gios);
+        userStore.setSessionId(trackingId, gqs.gios as string);
       };
       let t = window.setInterval(
         fn,
@@ -229,72 +228,51 @@ export default class GioEmbeddedAdapter {
     const hash = window.location.hash;
     const hashSearch = hashtag ? hash.substring(hash.indexOf('?') + 1) : '';
     const localQs = this.storage.getItem(LOCAL_KEY);
-    // qs.parse会自动把参数中的特殊字符给decode（主要是为了处理gio自带参数）
-    const searchQs = qs.parse(search);
-    // pmParse保留原格式，不会处理encode（主要是为了处理客户的参数）
-    const ctSearchQs = pmParse(search);
-    const hashQs = qs.parse(hashSearch);
-    const ctHashQs = pmParse(hashSearch);
+    const ctSearchQs = queryParse(search);
+    const ctHashQs = queryParse(hashSearch);
     // gio打通数据优先级url参数>hash参数>cookie参数
-    // 解析出来的参数对象（主要是为了存储gio自带参数）
-    let origQs = {};
-    // 解析出来的参数对象（主要是为了存储客户的参数）
+    // 解析出来的参数对象
     let ctOrigQs = {};
-    if (has(searchQs, 'gioprojectid')) {
-      origQs = searchQs;
+    if (has(ctSearchQs, 'gioprojectid')) {
       ctOrigQs = ctSearchQs;
       this.qsFrom = 'search';
-    } else if (has(hashQs, 'gioprojectid')) {
-      origQs = hashQs;
+    } else if (has(ctHashQs, 'gioprojectid')) {
       ctOrigQs = ctHashQs;
       this.qsFrom = 'hash';
     } else if (has(localQs, 'gioprojectid')) {
-      origQs = localQs;
       ctOrigQs = localQs;
       this.qsFrom = 'local';
     } else {
       this.qsFrom = 'none';
       return {};
     }
-    const gqs: any = {}; // gio参数
-    const customerqs: any = {}; // 客户业务参数
-    const GQS_KEY = [
-      'gioappid',
-      'gioprojectid',
-      'giodatacollect',
-      'giocircleurl',
-      'giocircleroomid',
-      ...USER_GQS,
-      ...COM_EXTRA
-    ];
-    keys(origQs).forEach((k: string) => {
+    const gqs: GQS = {};
+    const customerQs: CustomerQS = {};
+    keys(ctOrigQs).forEach((k: string) => {
       const lk = k.toLowerCase();
       // 根据定义获取合法的gio参数
       if (includes(GQS_KEY, lk)) {
-        // 过滤空值
-        if (!includes(['', 'undefined', 'null', undefined, null], origQs[k])) {
-          gqs[lk] = origQs[k];
-          // 转换布尔值
-          if (includes(['true', 'TRUE', true], origQs[k])) {
-            gqs[lk] = true;
-          }
-          if (includes(['false', 'FALSE', false], origQs[k])) {
-            gqs[lk] = false;
-          }
+        const val = decodeURIComponent(ctOrigQs[k]);
+        if (!includes(['', 'undefined', 'null', undefined, null], val)) {
+          gqs[lk] = includes(['true', 'TRUE', true], val)
+            ? true
+            : includes(['false', 'FALSE', false], val)
+              ? false
+              : val;
         } else {
           gqs[lk] = '';
         }
       } else {
         // 获取客户业务参数
-        customerqs[k] = ctOrigQs[k];
+        customerQs[k] = ctOrigQs[k];
       }
     });
     this.gqs = gqs;
-    this.customerqs = customerqs;
-    return { ...this.gqs, ...this.customerqs };
+    this.customerQs = customerQs;
+    return { ...this.gqs, ...this.customerQs };
   };
 
-  // 重写地址(回拼参数的时候用qs.stringify，把参数中的特殊字符重新encode回去)
+  // 重写地址
   gioURLRewrite = () => {
     const { hashtag } = this.growingIO.vdsConfig;
     let nSearch = window.location.search;
@@ -302,12 +280,12 @@ export default class GioEmbeddedAdapter {
     let paramProcessed = false;
     // 如果是从url参数中获取的gio参数，移除gio参数后直接拼地址参数
     if (this.qsFrom === 'search') {
-      nSearch = pmStringify(this.customerqs, true);
+      nSearch = queryStringify(this.customerQs, true);
       paramProcessed = true;
     }
     // 如果是从hash参数中获取的gio参数，移除gio参数后重写hash拼地址
     if (hashtag && this.qsFrom === 'hash') {
-      nHash = `${nHash.split('?')[0]}${pmStringify(this.customerqs, true)}`;
+      nHash = `${nHash.split('?')[0]}${queryStringify(this.customerQs, true)}`;
       paramProcessed = true;
     }
     // 如果是从url和hash中解析出参数则重定向地址
@@ -320,7 +298,7 @@ export default class GioEmbeddedAdapter {
   // --------------------- 以下内容是对新版小程序圈选的支持 ---------------------
 
   // 初始化小程序圈选监听
-  circleInit = (circleRoomId: string) => {
+  circleInit = (circleRoomId: string, vdsConfig: any) => {
     consoleText('您已进入小程序圈选模式', 'info');
     this.circleRoomId = circleRoomId;
     // 标记圈选状态，防止重复初始化
@@ -328,8 +306,11 @@ export default class GioEmbeddedAdapter {
     // 处理圈选上报地址
     const { useEmbeddedInherit } = this.growingIO;
     this.circleServerUrl = {};
-    if (this.options?.circleServerUrl) {
-      const { circleServerUrl } = this.options;
+    // 插件配置和vds配置都可以指定circleServerUrl，插件配置优先级最高
+    const circleServerUrl =
+      vdsConfig?.embeddedAdapter?.circleServerUrl ||
+      this.options?.circleServerUrl;
+    if (circleServerUrl) {
       // 自定义圈选url时，使用自定义url（应对op场景）可选单独字符串和对象两种形式
       if (isString(circleServerUrl)) {
         this.generateUrl(useEmbeddedInherit, circleServerUrl);
@@ -349,13 +330,11 @@ export default class GioEmbeddedAdapter {
   // 生成数据接口地址
   generateUrl = (trackingId: string, circleServerUrl: string) => {
     if (!startsWith(circleServerUrl, 'http')) {
-      this.circleServerUrl[
-        trackingId
-      ] = `https://${circleServerUrl}/api/public/circle-room/collect?roomId=${this.circleRoomId}`;
+      this.circleServerUrl[trackingId] =
+        `https://${circleServerUrl}/api/public/circle-room/collect?roomId=${this.circleRoomId}`;
     } else {
-      this.circleServerUrl[
-        trackingId
-      ] = `${circleServerUrl}/api/public/circle-room/collect?roomId=${this.circleRoomId}`;
+      this.circleServerUrl[trackingId] =
+        `${circleServerUrl}/api/public/circle-room/collect?roomId=${this.circleRoomId}`;
     }
   };
 
@@ -409,7 +388,7 @@ export default class GioEmbeddedAdapter {
   // 圈选结束
   circleClose = () => {
     this.circleOpen = false;
-    this.circleServerUrl = '';
+    this.circleServerUrl = {};
     this.growingIO.emitter.off(EMIT_MSG.ON_SEND_AFTER, this.collectorSendFn);
     // 断开圈选时删除存储中的圈选字段，防止刷新页面重新进入圈选状态
     const localQs = this.storage.getItem(LOCAL_KEY);

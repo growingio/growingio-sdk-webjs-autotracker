@@ -11,12 +11,15 @@ interface IGrowingWebViewJavascriptBridge {
 declare interface Window {
   _gr_ignore_local_rule: boolean;
   ActiveXObject?: any;
+  analytics?: any;
+  collectEvent?: any;
   gdp: any;
   gio: any;
   GrowingWebViewJavascriptBridge: IGrowingWebViewJavascriptBridge;
   vds: any;
   XDomainRequest: any;
   gioSDKInstalled?: any;
+  gioCompatibilityVds?: boolean;
   _gio_local_vds?: string | undefined;
 }
 

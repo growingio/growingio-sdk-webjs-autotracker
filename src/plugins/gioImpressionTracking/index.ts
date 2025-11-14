@@ -1,5 +1,5 @@
 import EMIT_MSG from '@/constants/emitMsg';
-import { GrowingIOType } from '@/types/growingIO';
+import { GrowingIOType } from '@/types/internal/growingIO';
 import {
   arrayFrom,
   compact,
@@ -91,7 +91,6 @@ export default class GioImpressionTracking {
     // 数值要大于0，只能无限趋近于0，等于0的时候会导致没出现就会发曝光
     const threshold =
       this.growingIO.vdsConfig?.impressionScale || 0.0000000000001;
-    // eslint-disable-next-line
     this.intersectionObserver = new IntersectionObserver(
       (entries) => {
         if (!isEmpty(entries)) {
@@ -173,7 +172,6 @@ export default class GioImpressionTracking {
         }
       });
     });
-    // eslint-disable-next-line
     this.mutationObserver.observe(document.body, {
       attributes: true,
       childList: true,
@@ -228,7 +226,6 @@ export default class GioImpressionTracking {
     // 校验eventName
     if (
       !EVENT_NAME_REG.test(data.eventName) ||
-      // eslint-disable-next-line
       Number.isInteger(Number(head(data.eventName.split(''))))
     ) {
       data.eventName = null;

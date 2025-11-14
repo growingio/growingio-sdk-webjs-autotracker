@@ -68,7 +68,8 @@ export const testCookie = (testDomain: string) => {
     const valid = !!Cookies.get('gioCookie', { domain: testDomain });
     Cookies.remove('gioCookie', { domain: testDomain });
     return valid;
-  } catch (error) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  } catch (e) {
     return false;
   }
 };
@@ -98,6 +99,7 @@ const storageAvailable = () => {
     storage.setItem(x, x);
     storage.removeItem(x);
     return true;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (e) {
     return false;
   }

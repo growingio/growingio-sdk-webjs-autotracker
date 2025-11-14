@@ -1,6 +1,7 @@
-import { GrowingIOType } from '@/types/growingIO';
+import { GrowingIOType } from '@/types/internal/growingIO';
 import { forEach, includes, isEmpty, unset } from '@/utils/glodash';
 import { getDynamicAttributes, limitObject, niceTry } from '@/utils/tools';
+import UserAgentManager from '@/core/userAgentManager';
 
 class EventContextBuilder {
   public minpExtraParams: any;
@@ -57,6 +58,22 @@ class EventContextBuilder {
         context.attributes = limitObject(
           getDynamicAttributes({ ...context.attributes })
         );
+      }
+    }
+
+    // 添加用户代理字段（如果启用了extraUA）
+    if (executeAttributes) {
+      // 检查主实例是否启用了extraUA（只有主实例可以设置extraUA配置）
+      // 所有实例都可以从全局单例获取用户代理信息
+      const mainVds = dataStore.getTrackerVds(this.growingIO.trackingId);
+      if (mainVds && mainVds.extraUA !== false) {
+        const userAgent = UserAgentManager.getUserAgent();
+        if (userAgent && userAgent.trim()) {
+          if (!context.attributes) {
+            context.attributes = {};
+          }
+          context.attributes.$userAgent = userAgent;
+        }
       }
     }
     // 过滤忽略字段（打通时忽略字段可能会失效，字段会继续被小程序覆盖）

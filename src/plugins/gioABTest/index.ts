@@ -3,7 +3,7 @@
  * 用途：用于提供自动获取AB实验数据和上报实验命中的插件。
  */
 import { initGlobalStorage } from '@/core/storage';
-import { GrowingIOType } from '@/types/growingIO';
+import { GrowingIOType } from '@/types/internal/growingIO';
 import {
   isEmpty,
   isNaN,
@@ -20,9 +20,9 @@ import {
   hashCode,
   limitObject,
   niceCallback,
-  niceTry
+  niceTry,
+  queryStringify
 } from '@/utils/tools';
-import qs from 'querystringify';
 import EMIT_MSG from '@/constants/emitMsg';
 
 const ABTEST_SIGN_REG = /^\d+_gdp_abt_sign$/;
@@ -325,7 +325,7 @@ export default class GioABTest {
         data.newDevice = false;
         this.removeVisitSids(trackingId);
       }
-      xhr.send(qs.stringify(data));
+      xhr.send(queryStringify(data));
       return;
     } else {
       consoleText('获取ABTest数据失败! 当前环境不支持XMLHttpRequest!', 'error');

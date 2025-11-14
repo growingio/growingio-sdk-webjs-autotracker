@@ -21,14 +21,14 @@ import {
   limitObject,
   niceCallback
 } from '@/utils/tools';
-import { DataStoreType } from '@/types/dataStore';
-import { GrowingIOType } from '@/types/growingIO';
+import { DataStoreType } from '@/types/internal/dataStore';
+import { GrowingIOType } from '@/types/internal/growingIO';
 import { eventNameValidate } from '@/utils/verifiers';
 import { initGlobalStorage } from './storage';
-import { PluginsType } from '@/types/plugins';
-import { StorageType } from '@/types/storage';
-import { UploaderType } from '@/types/uploader';
-import { UserStoreType } from '@/types/userStore';
+import { PluginsType } from '@/types/internal/plugins';
+import { StorageType } from '@/types/internal/storage';
+import { UploaderType } from '@/types/internal/uploader';
+import { UserStoreType } from '@/types/internal/userStore';
 import { verifyId } from '@/utils/verifiers';
 import * as glodash from '@/utils/glodash';
 import * as tools from '@/utils/tools';
@@ -38,6 +38,7 @@ import mitt from 'mitt';
 import Plugins from '__GIO_PLUGIN_ENTRY__';
 import Uploader from './uploader';
 import UserStore from './userStore';
+import UserAgentManager from './userAgentManager';
 
 // SDK全局参数 版本号、运行环境 均由打包工具替换写入
 const sdkVersion: any = '__SDK_VERSION__';
@@ -59,6 +60,7 @@ class GrowingIO implements GrowingIOType {
   public vdsConfig: any;
   public uploader: UploaderType;
   public storage: StorageType;
+
   // 当前主SDK的trackingId，用于区分事件归属。
   // 有的插件可能会需要生成事件，调用了复用了build事件的方法，为了不影响SDK自身逻辑，通过trackingId来区分
   public trackingId: string;
@@ -101,8 +103,7 @@ class GrowingIO implements GrowingIOType {
       if (this.trackingId && !this.plugins.gioMultipleInstances) {
         throw new Error('您正在尝试初始化另一个实例，请集成多实例插件后重试!');
       }
-      const { currentPage, sendVerifiedVisit, sendVerifiedPage } =
-        this.dataStore;
+      const { currentPage } = this.dataStore;
       // 初始化实例配置
       const vdsConfig = this.dataStore.initTrackerOptions(options);
       const isMain =
@@ -112,6 +113,11 @@ class GrowingIO implements GrowingIOType {
         this.storage = initGlobalStorage(this.vdsConfig);
         // 启动页面history的hook和监听
         currentPage.hookHistory();
+        // 只有主实例可以设置extraUA配置 检查是否支持获取增强型UA
+        if (vdsConfig.extraUA !== false && UserAgentManager.isCompatible()) {
+          // 启动用户代理初始化
+          UserAgentManager.initialize();
+        }
         // 标记SDK已初始化完成
         this.gioSDKInitialized = true;
         this.vdsConfig.gioSDKInitialized = true;
@@ -144,16 +150,9 @@ class GrowingIO implements GrowingIOType {
           'info'
         );
       }
-      // 不是与小程序打通的实例要发visit
-      if (this.useEmbeddedInherit !== vdsConfig.trackingId) {
-        sendVerifiedVisit(vdsConfig.trackingId);
-      }
-      sendVerifiedPage(vdsConfig.trackingId);
-      // 广播SDK初始化完成
-      this.emitter?.emit(EMIT_MSG.SDK_INITIALIZED, {
-        growingIO: this,
-        trackingId: vdsConfig.trackingId
-      });
+
+      // 异步等待用户代理初始化完成后再发送事件
+      this._waitForUserAgentAndSendEvents(vdsConfig.trackingId);
       return true;
     } catch (error) {
       consoleText(error, 'error');
@@ -165,7 +164,13 @@ class GrowingIO implements GrowingIOType {
   handlerDistribute = (trackingId: string, handler: string, args: any) => {
     const trackerVds = this.dataStore.getTrackerVds(trackingId);
     if (trackerVds) {
-      this[handler](trackingId, ...args);
+      if (UserAgentManager.isInitializing()) {
+        UserAgentManager.initialize().finally(() => {
+          this[handler](trackingId, ...args);
+        });
+      } else {
+        this[handler](trackingId, ...args);
+      }
     } else {
       if (isFunction(last(args))) {
         niceCallback(last(args), false);
@@ -328,7 +333,7 @@ class GrowingIO implements GrowingIOType {
           currentPage.pageProps[trackingId][currentPage.path] = {};
         }
       }
-    } catch (error) {
+    } catch (_error) {
       callError('clearPageAttributes');
       r = false;
     }
@@ -712,6 +717,59 @@ class GrowingIO implements GrowingIOType {
       niceCallback(callback, false);
     }
   };
+
+  // 获取增强的用户代理信息（兼容性API）
+  getUserAgent = (callback?: (userAgent: string) => any) => {
+    let userAgent = 'Unknown';
+    try {
+      if (this.vdsConfig.extraUA !== false) {
+        userAgent = UserAgentManager.getUserAgent();
+      } else {
+        // 如果没有启用extraUA，返回传统的用户代理
+        userAgent =
+          typeof navigator !== 'undefined' && navigator.userAgent
+            ? navigator.userAgent
+            : 'Unknown';
+      }
+    } catch (_error) {
+      userAgent =
+        typeof navigator !== 'undefined' && navigator.userAgent
+          ? navigator.userAgent
+          : 'Unknown';
+    }
+    niceCallback(callback, userAgent);
+    return userAgent;
+  };
+
+  // 私有方法：等待用户代理初始化完成后发送事件
+  private _waitForUserAgentAndSendEvents(trackingId: string) {
+    // 若用户代理仍在初始化，等待完成后再发送事件
+    // 这里不需要考虑IE等浏览器不支持Promise的情况，因为SDK初始化的时候UserAgentManager.isCompatible()会提前判断好，就不会去初始化UserAgentManager，也就不会进入UA初始化状态
+    if (UserAgentManager.isInitializing()) {
+      // 初始化完成后再发送 visit/page 事件
+      UserAgentManager.initialize().finally(() => {
+        this._sendEventsAfterUserAgent(trackingId);
+      });
+      return;
+    }
+
+    // 无需等待或已初始化完成，直接发送事件
+    this._sendEventsAfterUserAgent(trackingId);
+  }
+
+  // 私有方法：发送用户代理初始化完成后的事件
+  private _sendEventsAfterUserAgent(trackingId: string) {
+    // 不是与小程序打通的实例要发visit
+    if (this.useEmbeddedInherit !== trackingId) {
+      this.dataStore.sendVerifiedVisit(trackingId);
+    }
+    this.dataStore.sendVerifiedPage(trackingId);
+    // 广播SDK初始化完成
+    this.emitter?.emit(EMIT_MSG.SDK_INITIALIZED, {
+      growingIO: this,
+      trackingId: trackingId
+    });
+  }
 }
 
 export default GrowingIO;

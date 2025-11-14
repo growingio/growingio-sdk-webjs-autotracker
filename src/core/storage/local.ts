@@ -1,4 +1,4 @@
-import { StorageType } from '@/types/storage';
+import { StorageType } from '@/types/internal/storage';
 import { getActualKey, parseStorageValue } from '@/utils/tools';
 import { arrayFrom, endsWith, isObject, isString } from '@/utils/glodash';
 import { niceTry } from '@/utils/tools';

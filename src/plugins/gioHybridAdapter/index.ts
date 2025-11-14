@@ -7,8 +7,8 @@
  * 3、打通时想要双发需要加配置项，作为TODO，等有客户有实际需求时再做。
  */
 import EMIT_MSG from '@/constants/emitMsg';
-import { EVENT } from '@/types/events';
-import { GrowingIOType } from '@/types/growingIO';
+import { EVENT } from '@/types/internal/events';
+import { GrowingIOType } from '@/types/internal/growingIO';
 import {
   forEach,
   isBoolean,
@@ -24,8 +24,8 @@ import {
   GIOHYBRIDNODEINFO
 } from 'gio-web-nodes-parser/build/typings';
 import Page from '@/core/dataStore/page';
-import { addListener, niceTry } from '@/utils/tools';
-import { OriginOptions } from '@/types/dataStore';
+import { addListener, consoleText, niceTry } from '@/utils/tools';
+import { OriginOptions } from '@/types/internal/dataStore';
 
 const SUPPORT_EVENT_TYPES = [
   'VIEW_CLICK',
@@ -77,14 +77,6 @@ export default class GioHybridAdapter {
           this.growingIO.useHybridInherit &&
           window.GrowingWebViewJavascriptBridge
         ) {
-          const self = this;
-          window.GrowingWebViewJavascriptBridge.getDomTree = function (
-            ...args
-          ) {
-            if (args.length >= 4) {
-              return self._getDomTree.apply(this, args);
-            }
-          };
           this._addDomChangeListener();
         }
       }
@@ -190,24 +182,36 @@ export default class GioHybridAdapter {
 
   // 初始化桥
   private _initHybridBridge = () => {
-    let bridgeInitialized = false;
     // 是否存在桥
     this.hasHybridBridge = !!window.GrowingWebViewJavascriptBridge;
     if (this.hasHybridBridge) {
-      // 是否存在配置，不存在尝试格式化获取
-      if (!window?.GrowingWebViewJavascriptBridge?.configuration) {
-        window.GrowingWebViewJavascriptBridge.configuration = JSON.parse(
-          window.GrowingWebViewJavascriptBridge.getConfiguration()
-        );
+      try {
+        // 是否存在配置，不存在尝试格式化获取
+        if (!window?.GrowingWebViewJavascriptBridge?.configuration) {
+          window.GrowingWebViewJavascriptBridge.configuration = JSON.parse(
+            window.GrowingWebViewJavascriptBridge.getConfiguration()
+          );
+        }
+        // 把全局配置赋值给this
+        if (window?.GrowingWebViewJavascriptBridge?.configuration) {
+          this.hybridConfig =
+            window?.GrowingWebViewJavascriptBridge?.configuration;
+        }
+        // 挂载getDomTree方法
+        const self = this;
+        window.GrowingWebViewJavascriptBridge.getDomTree = function (...args) {
+          if (args.length >= 4) {
+            return self._getDomTree.apply(this, args);
+          }
+        };
+        // 返回桥初始化结果
+        return true;
+      } catch (error) {
+        consoleText(error, 'error');
+        return false;
       }
-      // 把全局配置赋值给this
-      if (window?.GrowingWebViewJavascriptBridge?.configuration) {
-        this.hybridConfig =
-          window?.GrowingWebViewJavascriptBridge?.configuration;
-      }
-      bridgeInitialized = true;
     }
-    return bridgeInitialized;
+    return false;
   };
 
   sendBeforeListener = ({
@@ -322,15 +326,7 @@ export default class GioHybridAdapter {
     });
     // @ts-ignore
     const elements = gioHybridNode
-      .trackNodes(
-        // eslint-disable-next-line
-        root ?? document.body,
-        {
-          isContainer: false,
-          zLevel: 0
-        },
-        false
-      )
+      .trackNodes(root ?? document.body, [], false)
       .map((o: GIOHYBRIDNODEINFO) => {
         // 移动端不需要这两个字段。iOS会报错
         unset(o, ['originNode', 'peerNodes']);
@@ -357,7 +353,6 @@ export default class GioHybridAdapter {
       };
     };
     mutationObserver = new MutationObserver(listener('mutation'));
-    // eslint-disable-next-line
     mutationObserver.observe(document.body, {
       attributes: true,
       characterData: true,

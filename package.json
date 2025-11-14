@@ -1,57 +1,68 @@
 {
   "name": "gio-webjs-sdk",
-  "version": "4.3.0",
+  "version": "4.3.1",
   "description": "GrowngIO Web/H5/小程序内嵌页/Hybrid数据采集SDK",
   "dependencies": {
     "array-from": "^2.1.1",
-    "gio-web-nodes-parser": "^2.0.10",
-    "js-cookie": "^3.0.1",
-    "mitt": "^1.2.0",
-    "querystringify": "^2.2.0",
-    "web-vitals": "^3.0.4"
+    "gio-web-nodes-parser": "^2.0.18",
+    "js-cookie": "^3.0.5",
+    "mitt": "1.2.0",
+    "web-vitals": "^3.5.2"
   },
   "devDependencies": {
     "@babel/core": "^7.17.9",
     "@babel/preset-env": "^7.16.11",
     "@babel/preset-typescript": "^7.16.7",
-    "@rollup/plugin-alias": "^3.1.9",
-    "@rollup/plugin-babel": "^5.3.1",
-    "@rollup/plugin-commonjs": "^22.0.0",
-    "@rollup/plugin-node-resolve": "^13.2.1",
-    "@rollup/plugin-replace": "^4.0.0",
-    "@rollup/plugin-typescript": "^8.3.2",
+    "@eslint/eslintrc": "^3.3.1",
+    "@eslint/js": "^9.28.0",
+    "@rollup/plugin-alias": "^5.1.1",
+    "@rollup/plugin-babel": "^6.0.4",
+    "@rollup/plugin-commonjs": "^28.0.3",
+    "@rollup/plugin-node-resolve": "^16.0.1",
+    "@rollup/plugin-replace": "^6.0.2",
+    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-typescript": "^12.1.2",
+    "@types/node": "^22.15.24",
     "@types/webpack-env": "^1.16.4",
-    "@typescript-eslint/eslint-plugin": "^5.29.0",
-    "@typescript-eslint/parser": "^5.62.0",
-    "eslint": "^8.14.0",
-    "eslint-config-prettier": "^8.5.0",
-    "eslint-plugin-compat": "^4.2.0",
-    "eslint-plugin-prettier": "^4.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.33.0",
+    "@typescript-eslint/parser": "^8.33.0",
+    "@vitest/coverage-v8": "^3.1.4",
+    "@vitest/ui": "^3.1.4",
+    "cross-env": "^10.0.0",
+    "eslint": "^9.27.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-compat": "^6.0.2",
+    "eslint-plugin-prettier": "^5.4.0",
     "eslint-plugin-typescript-compat": "^1.0.2",
-    "finalhandler": "^1.2.0",
-    "jsdom": "^20.0.0",
-    "prettier": "^2.6.2",
-    "rollup": "^2.70.2",
-    "rollup-plugin-filesize": "^9.1.2",
-    "rollup-plugin-terser": "^7.0.2",
-    "serve-static": "^1.15.0",
+    "finalhandler": "^2.1.0",
+    "globals": "^16.2.0",
+    "jsdom": "^26.1.0",
+    "prettier": "^3.5.3",
+    "puppeteer": "^24.9.0",
+    "rimraf": "^6.0.1",
+    "rollup": "^4.41.1",
+    "rollup-plugin-filesize": "^10.0.0",
+    "serve-static": "^2.2.0",
     "tslib": "^2.4.0",
-    "typescript": "^4.9.5"
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.4"
   },
   "scripts": {
-    "build:es": "npm run lint && npm run build:sdk-es && npm run build:plugins-es",
-    "build:plugins-es": "rollup -c rollup.plugins.config.js --es-plugins",
-    "build:plugins": "rollup -c rollup.plugins.config.js --umd-plugins",
-    "build:sdk-es": "rollup -c rollup.config.js --es && rollup -c rollup.config.js --es-full",
-    "build:sdk": "rollup -c rollup.config.js --umd && rollup -c rollup.config.js --umd-full",
+    "build:es": "npm run build:sdk-es && npm run build:plugins-es",
+    "build:plugins-es": "npm run clean:plugins && cross-env NODE_ENV=production rollup -c rollup.plugins.config.js --bundleConfigAsCjs --environment es,plugins",
+    "build:plugins": "npm run clean:plugins && cross-env NODE_ENV=production rollup -c rollup.plugins.config.js --bundleConfigAsCjs --environment umd,plugins",
+    "build:sdk-es": "npm run clean && cross-env NODE_ENV=production rollup -c rollup.config.js --bundleConfigAsCjs --environment es && node scripts/aggregate-types.js --es && node scripts/fix-type-paths.js",
+    "build:sdk": "npm run clean && cross-env NODE_ENV=production rollup -c rollup.config.js --bundleConfigAsCjs --environment umd",
     "build": "npm run lint && npm run build:sdk && npm run build:plugins",
-    "dev:es": "rollup -c rollup.config.js -w --es",
-    "dev:plugins-es": "rollup -c rollup.plugins.config.js -w --es-plugins",
-    "dev:plugins": "rollup -c rollup.plugins.config.js -w --umd-plugins",
-    "dev:sdk-es": "rollup -c rollup.config.js -w --es",
-    "dev:sdk": "rollup -c rollup.config.js -w --umd",
-    "dev": "rollup -c rollup.config.js -w --umd",
-    "lint": "eslint src"
+    "clean:plugins": "rimraf dist/plugins/*",
+    "clean": "rimraf dist/*",
+    "dev:es": "npm run dev:sdk-es",
+    "dev:plugins-es": "npm run clean:plugins && cross-env NODE_ENV=production rollup -c rollup.plugins.config.js -w --bundleConfigAsCjs --environment es,plugins",
+    "dev:plugins": "npm run clean:plugins && cross-env NODE_ENV=production rollup -c rollup.plugins.config.js -w --bundleConfigAsCjs --environment umd,plugins",
+    "dev:sdk-es": "npm run clean && cross-env NODE_ENV=production rollup -c rollup.config.js -w --bundleConfigAsCjs --environment es",
+    "dev:sdk": "npm run clean && cross-env NODE_ENV=production rollup -c rollup.config.js -w --bundleConfigAsCjs --environment umd",
+    "dev": "npm run clean && cross-env NODE_ENV=production rollup -c rollup.config.js -w --bundleConfigAsCjs --environment umd",
+    "lint": "eslint src --ext .ts"
   },
   "repository": {
     "type": "git",
@@ -64,7 +75,7 @@
   },
   "homepage": "https://github.com/growingio/growingio-sdk-webjs-autotracker#readme",
   "browserslist": [
-    "IE 11",
+    "IE 10",
     "Android >= 4.4",
     "iOS >= 9",
     "Chrome >= 51",
@@ -73,54 +84,77 @@
     "Opera >= 38",
     "Edge >= 15"
   ],
+  "main": "dist/gdp.js",
+  "module": "dist/gdp.js",
+  "types": "dist/api.d.ts",
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
+      "types": "./dist/api.d.ts",
       "import": "./dist/gdp.js",
       "require": "./dist/gdp.js"
     },
     "./dist/gdp": {
+      "types": "./dist/api.d.ts",
       "import": "./dist/gdp.js",
       "require": "./dist/gdp.js"
     },
     "./dist/gdp-full": {
+      "types": "./dist/api.d.ts",
       "import": "./dist/gdp-full.js",
       "require": "./dist/gdp-full.js"
     },
     "./gdp": {
+      "types": "./dist/api.d.ts",
       "import": "./dist/gdp.js",
       "require": "./dist/gdp.js"
     },
     "./gdp-full": {
+      "types": "./dist/api.d.ts",
       "import": "./dist/gdp-full.js",
       "require": "./dist/gdp-full.js"
     },
     "./plugins/gioABTest": {
+      "types": "./dist/api.d.ts",
       "import": "./dist/plugins/gioABTest.js",
       "require": "./dist/plugins/gioABTest.js"
     },
     "./plugins/gioCompress": {
+      "types": "./dist/api.d.ts",
       "import": "./dist/plugins/gioCompress.js",
       "require": "./dist/plugins/gioCompress.js"
     },
     "./plugins/gioEmbeddedAdapter": {
+      "types": "./dist/api.d.ts",
       "import": "./dist/plugins/gioEmbeddedAdapter.js",
       "require": "./dist/plugins/gioEmbeddedAdapter.js"
     },
     "./plugins/gioEventAutoTracking": {
+      "types": "./dist/api.d.ts",
       "import": "./dist/plugins/gioEventAutoTracking.js",
       "require": "./dist/plugins/gioEventAutoTracking.js"
     },
     "./plugins/gioHybridAdapter": {
+      "types": "./dist/api.d.ts",
       "import": "./dist/plugins/gioHybridAdapter.js",
       "require": "./dist/plugins/gioHybridAdapter.js"
     },
     "./plugins/gioImpressionTracking": {
+      "types": "./dist/api.d.ts",
       "import": "./dist/plugins/gioImpressionTracking.js",
       "require": "./dist/plugins/gioImpressionTracking.js"
     },
     "./plugins/gioMultipleInstances": {
+      "types": "./dist/api.d.ts",
       "import": "./dist/plugins/gioMultipleInstances.js",
       "require": "./dist/plugins/gioMultipleInstances.js"
+    },
+    "./plugins/gioPerformance": {
+      "types": "./dist/api.d.ts",
+      "import": "./dist/plugins/gioPerformance.js",
+      "require": "./dist/plugins/gioPerformance.js"
     }
   }
 }

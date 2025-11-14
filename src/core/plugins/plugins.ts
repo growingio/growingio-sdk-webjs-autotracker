@@ -1,4 +1,4 @@
-import { GrowingIOType } from '@/types/growingIO';
+import { GrowingIOType } from '@/types/internal/growingIO';
 import BasePlugins from './basePlugins';
 
 class Plugins extends BasePlugins {

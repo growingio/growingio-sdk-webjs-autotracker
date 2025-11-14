@@ -2,7 +2,7 @@
  * 代码中一些通用的或者业务上的校验器
  */
 import { EVENT_NAME_REG } from '@/constants/regex';
-import { GrowingIOType } from '@/types/growingIO';
+import { GrowingIOType } from '@/types/internal/growingIO';
 import {
   includes,
   isEmpty,

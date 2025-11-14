@@ -1,7 +1,7 @@
 import { addListener } from '@/utils/tools';
 import { GioWebNode } from 'gio-web-nodes-parser';
 import { GIOWEBNODE, GIOWEBNODEINFO } from 'gio-web-nodes-parser/build/typings';
-import { GrowingIOType } from '@/types/growingIO';
+import { GrowingIOType } from '@/types/internal/growingIO';
 import { isEmpty, last } from '@/utils/glodash';
 import EMIT_MSG from '@/constants/emitMsg';
 /**
@@ -16,7 +16,7 @@ class TouchHandler {
   private touchTimeout?: any;
   private touchEvent?: any;
 
-  constructor(public handler: Function) {
+  constructor(public handler: (event: any, eventName?: string) => boolean) {
     const ua = navigator.userAgent;
     const isChrome = /chrome/i.exec(ua);
     const isAndroid = /android/i.exec(ua);
@@ -88,7 +88,7 @@ class TouchHandler {
     */
     if (this.touchEvent && duration < TAP_DELAY) {
       this.touchTimeout = setTimeout(() => {
-        this.handler(this.touchEvent);
+        this.handler(this.touchEvent, 'touch');
         this.touchEvent = null;
       }, 200);
     } else if (
@@ -96,7 +96,7 @@ class TouchHandler {
       duration >= TAP_DELAY &&
       duration < TAP_TIMEOUT
     ) {
-      this.handler(this.touchEvent);
+      this.handler(this.touchEvent, 'touch');
       this.touchEvent = null;
     }
   }

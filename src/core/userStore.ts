@@ -1,7 +1,7 @@
 import EMIT_MSG from '@/constants/emitMsg';
 import { SESSION_KEY_REG } from '@/constants/regex';
-import { GrowingIOType } from '@/types/growingIO';
-import { UserStoreType } from '@/types/userStore';
+import { GrowingIOType } from '@/types/internal/growingIO';
+import { UserStoreType } from '@/types/internal/userStore';
 import { find } from '@/utils/glodash';
 import { guid } from '@/utils/tools';
 

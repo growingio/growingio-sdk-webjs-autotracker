@@ -3,6 +3,7 @@ import {
   endsWith,
   forEach,
   formatDate,
+  has,
   includes,
   isArray,
   isDate,
@@ -42,19 +43,23 @@ export const consoleText = (
 };
 
 // 优化过的try...catch包裹体
-export const niceTry = (fn: Function) => {
+export const niceTry = <T>(
+  fn: (...args: any[]) => T,
+  ...args: any[]
+): T | undefined => {
   try {
-    return fn();
+    return fn(...args);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (e) {
     return undefined;
   }
 };
 
 // 封装过的调用callback的方法
-export const niceCallback = (cb: Function, cbv?: any) => {
+export const niceCallback = (cb: (...args: any[]) => void, ...args: any[]) => {
   if (isFunction(cb)) {
     try {
-      cb(cbv);
+      cb(...args);
     } catch (error) {
       consoleText(`回调执行失败！${error}`, 'error');
     }
@@ -96,7 +101,6 @@ export const checkPluginItem = (pluginItem: any, index?: number) => {
 
 // 检查sendBeacon是否支持
 export const supportBeacon = (): boolean => {
-  // eslint-disable-next-line
   const hasBeacon = !!window?.navigator?.sendBeacon;
   const ua = window.navigator.userAgent;
   if (ua.match(/(iPad|iPhone|iPod)/g)) {
@@ -129,6 +133,14 @@ export const isSafari = () => {
 export const isBot = () => {
   return /bot|crawler|spider|scrapy|jiankongbao|slurp|transcoder|networkbench/i.test(
     navigator.userAgent.toLowerCase()
+  );
+};
+
+// 检测当前环境是否支持Promise
+export const isPromiseSupported = (): boolean => {
+  return (
+    typeof Promise !== 'undefined' &&
+    Promise.toString().indexOf('[native code]') !== -1
   );
 };
 
@@ -282,9 +294,10 @@ export const getMainTrackingId = () => {
 
 // 手动解析地址参数
 // 以前用querystringify库，但是parse会自动decode参数，会导致最后拼回去的时候可能不是客户想要的值
-export const pmParse = (search: string) => {
+export const queryParse = (search: string) => {
   if (startsWith(search, '?') || includes(search, ['=', '&'])) {
     const qsValues = {};
+    const orderKeys: string[] = [];
     if (startsWith(search, '?')) {
       search = search.substring(1);
     }
@@ -295,9 +308,10 @@ export const pmParse = (search: string) => {
       const value = kvPairs[1] ?? '';
       if (!isNil(key) && key !== '') {
         qsValues[key] = value;
+        orderKeys.push(key);
       }
     });
-    return qsValues;
+    return { ...qsValues, __GIO_ORDER__: orderKeys };
   } else {
     return decodeURIComponent(search);
   }
@@ -305,14 +319,16 @@ export const pmParse = (search: string) => {
 
 // 手动拼接地址参数
 // 以前用querystringify库，但是stringify会自动encode参数，会导致最后拼回去的时候可能不是客户想要的值
-export const pmStringify = (value: any, prefix = false) => {
+export const queryStringify = (value: any, prefix = false) => {
   if (typeOf(value) === 'object') {
     let s = '';
-    forEach(value, (v, k) => {
+    const vKeys: string[] = value.__GIO_ORDER__ || keys(value);
+    vKeys.forEach((k) => {
+      if (k === '__GIO_ORDER__' || !has(value, k)) return;
       if (s === '') {
-        s = (prefix ? '?' : '') + `${k}=${v}`;
+        s = (prefix ? '?' : '') + `${k}=${value[k]}`;
       } else {
-        s += `&${k}=${v}`;
+        s += `&${k}=${value[k]}`;
       }
     });
     return s;

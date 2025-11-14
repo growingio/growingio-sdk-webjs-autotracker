@@ -42,6 +42,13 @@ export const DEFAULT_SETTINGS = {
   debug: { type: 'boolean', default: false },
   // 与小程序打通时忽略的字段
   embeddedIgnore: { type: 'array', default: [] },
+  // 与小程序打通时的配置项
+  embeddedAdapter: {
+    type: 'object',
+    default: { circleServerUrl: '' }
+  },
+  // 是否启用增强UA获取（仅主实例生效）
+  extraUA: { type: 'boolean', default: true },
   // 是否开启强制登录；多实例时仅主实例生效
   forceLogin: { type: 'boolean', default: false },
   // 是否开启多身份认证
@@ -91,6 +98,7 @@ export const DEFAULT_SETTINGS = {
 export const DIRECT_HANDLERS = [
   'getPlugins', // 获取所有已加载插件
   'getDeviceId', // 获取设备id
+  'getUserAgent', // 获取增强的用户代理信息
   'updateImpression' // 手动更新曝光
 ];
 
@@ -134,6 +142,7 @@ export const ALLOW_SET_OPTIONS = {
   dataCollect: '数据采集',
   dataSourceId: '数据源ID',
   debug: '调试模式',
+  extraUA: '增强用户代理',
   forceLogin: '强制登录',
   hashtag: '哈希解析',
   serverUrl: '数据上报服务地址'

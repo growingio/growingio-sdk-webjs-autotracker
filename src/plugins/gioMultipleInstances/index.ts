@@ -3,8 +3,8 @@
  * 用途：用于提供多实例以向指定项目和数据源发数的插件。
  */
 
-import { EXTEND_EVENT } from '@/types/events';
-import { GrowingIOType } from '@/types/growingIO';
+import { EXTEND_EVENT } from '@/types/internal/events';
+import { GrowingIOType } from '@/types/internal/growingIO';
 import { hashCode, niceTry } from '@/utils/tools';
 import { includes, isString, toString, unset } from '@/utils/glodash';
 

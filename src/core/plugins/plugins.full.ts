@@ -1,4 +1,4 @@
-import { GrowingIOType } from '@/types/growingIO';
+import { GrowingIOType } from '@/types/internal/growingIO';
 import gioCompress from '@/plugins/gioCompress/index.es';
 import gioEmbeddedAdapter from '@/plugins/gioEmbeddedAdapter/index.es';
 import gioEventAutoTracking from '@/plugins/gioEventAutoTracking/index.es';

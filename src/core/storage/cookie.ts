@@ -1,4 +1,4 @@
-import { StorageType } from '@/types/storage';
+import { StorageType } from '@/types/internal/storage';
 import { getActualKey, parseStorageValue } from '@/utils/tools';
 import { isString, keys, endsWith, includes } from '@/utils/glodash';
 import Cookies from 'js-cookie';

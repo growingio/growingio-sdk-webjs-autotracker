@@ -17,6 +17,39 @@ import {
 import GrowingIO from '@/core/growingIO';
 import EMIT_MSG from '@/constants/emitMsg';
 
+// 导出类型定义
+export type { 
+  // API 类型 (用户直接使用)
+  InitOptions,
+  PageAttributes,
+  UserAttributes,
+  EventAttributes,
+  TrackEventParams,
+  TimerEventParams,
+  ABTestCallback,
+  CommonCallback,
+  BeforeSendListener,
+  PageListenerCallback,
+  GrowingIOInstance,
+  GrowingIO,
+  Gdp,
+  // 内部类型
+  GrowingIOType,
+  PluginItem, 
+  PluginsType,
+  OriginOptions, 
+  DataStoreType,
+  UserOptions,
+  StorageKeyType,
+  StorageType,
+  UploaderType,
+  UserStoreType,
+  PageType,
+  EVENT_TYPES,
+  EVENT,
+  EXTEND_EVENT
+} from '@/types';
+
 let gdp;
 const vdsName = window._gio_local_vds || 'vds';
 const namespace = window[vdsName]?.namespace ?? 'gdp';

@@ -1,4 +1,4 @@
-import { GrowingIOType } from '@/types/growingIO';
+import { GrowingIOType } from '@/types/internal/growingIO';
 import { fixed, forEach, isEmpty, isEqual, last } from '@/utils/glodash';
 import { onFCP, onLCP, onTTFB } from 'web-vitals';
 
@@ -39,13 +39,16 @@ export default class Monitor {
   };
 
   getLaunchTime = () => {
-    const { loadEventEnd, navigationStart } = window.performance.timing;
+    const timing = window.performance?.timing;
+    if (!timing) return 0;
+    const { loadEventEnd, navigationStart } = timing;
     return loadEventEnd - navigationStart;
   };
 
   getInteractiveTime = () => {
-    const { domContentLoadedEventEnd, navigationStart } =
-      window.performance.timing;
+    const timing = window.performance?.timing;
+    if (!timing) return 0;
+    const { domContentLoadedEventEnd, navigationStart } = timing;
     return domContentLoadedEventEnd - navigationStart;
   };
 
@@ -57,7 +60,10 @@ export default class Monitor {
       };
       forEach(this.vitalsData, (v, k) => {
         if (!isEmpty(v)) {
-          performance[PERF_ENUMS[k]] = fixed(last(v).value, 0);
+          const lastValue = last(v);
+          if (lastValue?.value !== undefined) {
+            performance[PERF_ENUMS[k]] = fixed(lastValue.value, 0);
+          }
         }
       });
       if (!isEqual(performance, this.performance)) {

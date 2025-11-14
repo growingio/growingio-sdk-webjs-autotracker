@@ -29,12 +29,12 @@ import {
   niceTry,
   limitObject
 } from '@/utils/tools';
-import { DataStoreType, StorageKeyType } from '@/types/dataStore';
-import { GrowingIOType } from '@/types/growingIO';
+import { DataStoreType, StorageKeyType } from '@/types/internal/dataStore';
+import { GrowingIOType } from '@/types/internal/growingIO';
 import EMIT_MSG from '@/constants/emitMsg';
 import EventContextBuilder from './eventContextBuilder';
 import Page from './page';
-import PageType from '@/types/page';
+import PageType from '@/types/internal/page';
 
 class DataStore implements DataStoreType {
   readonly ALLOW_SETTING_KEYS = Object.keys(DEFAULT_SETTINGS);
@@ -101,7 +101,6 @@ class DataStore implements DataStoreType {
   }
 
   // 获取采集实例内容 //? 多实例插件会重写该方法
-  // eslint-disable-next-line
   getTrackerVds = (trackingId: string) =>
     this.growingIO.trackingId === trackingId
       ? { ...this.growingIO.vdsConfig }
@@ -301,7 +300,7 @@ class DataStore implements DataStoreType {
       } else {
         return this.growingIO.vdsConfig[k];
       }
-    } else if (isEmpty(k)) {
+    } else if (isEmpty(k) || isNil(k)) {
       return trackerVds;
     } else {
       callError(`getOption > ${k}`);
@@ -330,7 +329,7 @@ class DataStore implements DataStoreType {
         };
       }
     } catch (error) {
-      consoleText('Internal Error!更新配置项错误!', 'error');
+      consoleText(`Internal Error! ${error}`, 'error');
     }
   };
 
