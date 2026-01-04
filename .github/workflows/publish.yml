@@ -1,6 +1,5 @@
 # 监听创建tag的事件
 # 会自动进行发版到npm，同时创建一个release包
-
 name: Publish And Release
 
 on:
@@ -12,34 +11,44 @@ jobs:
   publish:
     name: Auto Publish npm
     runs-on: ubuntu-latest
+    # Trusted Publisher 必需权限：开启OIDC认证权限 + 读取仓库内容
+    permissions:
+      id-token: write
+      contents: read
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v2
+      - uses: actions/checkout@v4 # 升级到最新版，提升稳定性和兼容性
+      - uses: actions/setup-node@v4 # 升级到最新版，更好支持Node 22
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org/
       - name: Build
-        run: rm -r dist && npm install && npm run build:es
-      - name: Publish
-        run: yarn publish --tag latest --non-interactive --access public
+        run: |
+          rm -rf dist || true  # 兼容dist目录不存在的情况，避免构建报错
+          npm install  # 统一使用npm（也可保留yarn，不影响Trusted Publisher）
+          npm run build:es
+      - name: Publish to npm
+        # 直接使用npm publish（Trusted Publisher通过OIDC自动认证，无需手动配置Token）
+        run: npm publish --tag latest --non-interactive --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTOMATION_TOKEN }}
+          # 无需手动填充，OIDC会自动完成认证，此处仅为兼容npm的环境变量校验
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+
   release:
     name: Auto Create Release
     runs-on: ubuntu-latest
     needs: publish
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v2
+      - uses: actions/checkout@v4 # 升级到最新版
+      - uses: actions/setup-node@v4 # 升级到最新版
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org/
       - name: Create Release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # GitHub内置Token，无需手动配置
         with:
           tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
+          release_name: Release ${{ github.ref_name }} # 优化：直接获取清晰的tag名称（如v1.0.0）
           draft: false
           prerelease: false
