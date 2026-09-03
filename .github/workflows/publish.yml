@@ -27,11 +27,10 @@ jobs:
           npm install  # 统一使用npm（也可保留yarn，不影响Trusted Publisher）
           npm run build:es
       - name: Publish to npm
-        # 直接使用npm publish（Trusted Publisher通过OIDC自动认证，无需手动配置Token）
+        # 使用 npm Automation token 认证；OIDC 权限保留，以便日后迁移到 npm Trusted Publisher。
         run: npm publish --tag latest --non-interactive --access public
         env:
-          # 无需手动填充，OIDC会自动完成认证，此处仅为兼容npm的环境变量校验
-          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   release:
     name: Auto Create Release
