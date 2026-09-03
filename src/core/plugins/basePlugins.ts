@@ -12,7 +12,7 @@ import { consoleText } from '@/utils/tools';
 import EMIT_MSG from '@/constants/emitMsg';
 
 // 会被强制剔除出内置的插件（即必须通过手动注册的方式加载的内置插件）
-const EXTRA_PLUGINS = ['gioPerformance'];
+const EXTRA_PLUGINS = ['gioPerformance', 'gioMultipleInstances'];
 
 // @ts-nocheck
 class BasePlugins implements PluginsType {
@@ -110,7 +110,17 @@ class BasePlugins implements PluginsType {
 
   // 移除插件
   uninstall = (pluginName: string) => {
-    unset(this.pluginItems, pluginName);
+    const plugin = (this.growingIO?.plugins as any)?.[pluginName];
+    if (plugin && isFunction(plugin.destroy)) {
+      try {
+        plugin.destroy();
+      } catch (error) {
+        this.lifeError({ name: pluginName } as PluginItem, error);
+      }
+    }
+    this.pluginItems = this.pluginItems.filter(
+      (pluginItem: PluginItem) => pluginItem.name !== pluginName
+    );
     unset(this.growingIO?.plugins, pluginName);
     if (pluginName === 'gioEmbeddedAdapter') {
       this.growingIO.useEmbeddedInherit = '';
@@ -125,7 +135,8 @@ class BasePlugins implements PluginsType {
   uninstallAll = () => {
     this.growingIO.useEmbeddedInherit = '';
     this.growingIO.useHybridInherit = '';
-    this.pluginItems.forEach((o: PluginItem) => this.uninstall(o.name));
+    [...this.pluginItems].forEach((o: PluginItem) => this.uninstall(o.name));
+    this.pluginItems = [];
   };
 
   lifeError = (p: PluginItem, e: any) => {

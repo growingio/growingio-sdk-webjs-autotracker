@@ -50,6 +50,7 @@ class GrowingIO implements GrowingIOType {
   public emitter: any;
   public gioSDKFull: boolean;
   public gioSDKInitialized: boolean;
+  private destroyed: boolean;
   // 小程序是否打通标识
   public useEmbeddedInherit: string;
   // hybrid是否打通标识
@@ -77,6 +78,7 @@ class GrowingIO implements GrowingIOType {
     this.useHybridInherit = '';
     // 初始化完成标记
     this.gioSDKInitialized = false;
+    this.destroyed = false;
     // 插件管理实例
     this.plugins = new Plugins(this);
     // 加载内置插件
@@ -139,8 +141,8 @@ class GrowingIO implements GrowingIOType {
           this.useEmbeddedInherit === vdsConfig.trackingId
             ? '小程序模式'
             : this.useHybridInherit === vdsConfig.trackingId
-            ? 'Hybrid模式'
-            : 'Web模式'
+              ? 'Hybrid模式'
+              : 'Web模式'
         }`,
         'success'
       );
@@ -160,10 +162,46 @@ class GrowingIO implements GrowingIOType {
     }
   };
 
+  // 卸载 SDK：仅销毁当前页面内存、监听与待发送队列，不清除持久化的用户数据。
+  destroy = () => {
+    try {
+      this.destroyed = true;
+      this.dataStore?.currentPage?.unhookHistory();
+      this.plugins?.uninstallAll();
+      if (this.uploader) {
+        this.uploader.destroy();
+      }
+      if (this.dataStore) {
+        this.dataStore.initializedTrackingIds = [];
+        this.dataStore.generalProps = {};
+        this.dataStore.trackTimers = {};
+        this.dataStore.beforeSendListener = {};
+        this.dataStore.pendingVisitRequests = {};
+        this.dataStore.lastPageEvent = {};
+      }
+      this.gioSDKInitialized = false;
+      this.useEmbeddedInherit = '';
+      this.useHybridInherit = '';
+      this.subInstance = undefined;
+      this.vdsConfig = undefined;
+      this.trackingId = undefined;
+      // mitt 的监听器会持有 SDK 和插件实例；清空后才能让它们被释放。
+      (this.emitter as any)?.all?.clear?.();
+      consoleText('Gio Web SDK 已卸载，运行时内存已清理。', 'info');
+      return true;
+    } catch (error) {
+      consoleText(`SDK卸载失败: ${error}`, 'error');
+      return false;
+    }
+  };
+
   // 需要校验实例的方法执行
   handlerDistribute = (trackingId: string, handler: string, args: any) => {
-    const trackerVds = this.dataStore.getTrackerVds(trackingId);
-    if (trackerVds) {
+    // 检查实例是否存在：主实例匹配 或 subInstance 中存在
+    const instanceExists =
+      this.trackingId === trackingId ||
+      !!(this.subInstance && this.subInstance[trackingId]);
+    if (instanceExists) {
       if (UserAgentManager.isInitializing()) {
         UserAgentManager.initialize().finally(() => {
           this[handler](trackingId, ...args);
@@ -251,7 +289,7 @@ class GrowingIO implements GrowingIOType {
     props?: any,
     callback?: (args?: any) => any
   ) => {
-    this.dataStore.buildVisitEvent({ ...props, trackingId });
+    this.dataStore.buildVisitEvent(trackingId, props);
     // 执行回调
     niceCallback(callback);
   };
@@ -759,6 +797,10 @@ class GrowingIO implements GrowingIOType {
 
   // 私有方法：发送用户代理初始化完成后的事件
   private _sendEventsAfterUserAgent(trackingId: string) {
+    // 卸载发生在增强 UA 异步初始化期间时，不再发送延迟事件。
+    if (this.destroyed) {
+      return;
+    }
     // 不是与小程序打通的实例要发visit
     if (this.useEmbeddedInherit !== trackingId) {
       this.dataStore.sendVerifiedVisit(trackingId);

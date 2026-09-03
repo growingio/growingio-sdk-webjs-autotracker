@@ -1,31 +1,41 @@
 import { isNil, isString, startsWith } from '@/utils/glodash';
 import { niceTry } from '@/utils/tools';
 
-// 特殊字符不进行 与或 加密 （因为A,a,Z,z，转换后会变成符号
-const special: any = {
+const ENCRYPTION_PREFIX = 'gioenc-v2-';
+const LEGACY_ENCRYPTION_PREFIX = 'gioenc-';
+
+// v1 为避免部分字符映射冲突而跳过了这些字符。保留它只用于读取历史数据。
+const legacySpecial: any = {
   A: 1,
   a: 1,
   Z: 1,
   z: 1,
   '@': 1,
-  '{': 1
+  '{': 1,
+  '[': 1,
+  '`': 1
 };
 
-// 加密
+// 新写入值带版本标记，所有 UTF-16 code unit 都参与 XOR，避免 v1 的字符白名单遗漏。
 export const enc = (v: string) =>
-  !isNil(v) ? niceTry(() => `gioenc-${bitEncrypt(v)}`) || v : v;
+  !isNil(v) ? niceTry(() => `${ENCRYPTION_PREFIX}${xorEncrypt(v)}`) || v : v;
 
-// 解密
+// 保留 v1 解码以读取已有记录；新写入统一使用 v2，避免继续产生有歧义的 v1 密文。
 export const dec = (v: string) =>
-  isString(v) && startsWith(v, 'gioenc-')
-    ? niceTry(() => bitEncrypt(v.replace('gioenc-', ''))) || v
-    : v;
+  !isString(v)
+    ? v
+    : startsWith(v, ENCRYPTION_PREFIX)
+      ? niceTry(() => xorEncrypt(v.slice(ENCRYPTION_PREFIX.length))) || v
+      : startsWith(v, LEGACY_ENCRYPTION_PREFIX)
+        ? niceTry(() => legacyBitEncrypt(v.slice(LEGACY_ENCRYPTION_PREFIX.length))) ||
+          v
+        : v;
 
-const bitEncrypt = (data: any) => {
+const legacyBitEncrypt = (data: any) => {
   data = data || '';
   let arr = data.split('');
   let result = arr.map((item: any) => {
-    if (!special[item]) {
+    if (!legacySpecial[item]) {
       return xor(item);
     } else {
       return item;
@@ -33,6 +43,12 @@ const bitEncrypt = (data: any) => {
   });
   return result.join('');
 };
+
+const xorEncrypt = (data: string) =>
+  data
+    .split('')
+    .map((item: string) => xor(item))
+    .join('');
 
 const xor = (msg: string) => {
   let isNum = /[0-9]/.test(msg);

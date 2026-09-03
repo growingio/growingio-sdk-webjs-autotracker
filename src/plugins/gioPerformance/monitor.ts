@@ -14,6 +14,7 @@ export default class Monitor {
   private vitalsData: any;
   // 处理后的性能数据
   private performance: any = {};
+  private performanceTimer: number | undefined;
   constructor(public growingIO: GrowingIOType, public options: any = {}) {
     this.buildMonitorEvent = (attributes) => {
       this.growingIO.plugins.gioPerformance?.buildPerfEvent(
@@ -53,7 +54,7 @@ export default class Monitor {
   };
 
   generatePerfData = () => {
-    window.setTimeout(() => {
+    this.performanceTimer = window.setTimeout(() => {
       const performance = {
         page_launch_duration: this.getLaunchTime(),
         interactive_duration: this.getInteractiveTime()
@@ -76,5 +77,9 @@ export default class Monitor {
   // 销毁移除监听
   destroy = () => {
     window.removeEventListener('load', this.generatePerfData);
+    if (this.performanceTimer) {
+      window.clearTimeout(this.performanceTimer);
+      this.performanceTimer = undefined;
+    }
   };
 }

@@ -18,8 +18,7 @@ export default class Exception {
     this.setListeners();
     // 移除集成代码中的监听，防止内存泄露
     if (window.gdp.ef) {
-      window.removeEventListener('unhandledrejection', window.gdp.ef);
-      window.removeEventListener('error', window.gdp.ef);
+      this.removeErrorListeners(window.gdp.ef);
       window.gdp.ef = undefined;
     }
     // 上报SDK加载之前收集到的报错信息
@@ -36,6 +35,17 @@ export default class Exception {
       window.addEventListener('error', this.handleError, true);
     }
     this.listenerSet = true;
+  };
+
+  /**
+   * 错误监听会以捕获阶段注册；启动代码的历史实现可能省略 capture 参数。
+   * 两种模式都移除，确保 SDK 接管后不会留下重复上报的临时监听。
+   */
+  private removeErrorListeners = (listener: any) => {
+    ['unhandledrejection', 'error'].forEach((eventName) => {
+      window.removeEventListener(eventName, listener, true);
+      window.removeEventListener(eventName, listener);
+    });
   };
 
   // 触发错误
@@ -88,7 +98,6 @@ export default class Exception {
 
   // 销毁移除监听
   destroy = () => {
-    window.removeEventListener('unhandledrejection', this.handleError);
-    window.removeEventListener('error', this.handleError);
+    this.removeErrorListeners(this.handleError);
   };
 }

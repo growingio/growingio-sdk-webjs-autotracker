@@ -40,12 +40,12 @@ export const DEFAULT_SETTINGS = {
   dataCollect: { type: 'boolean', default: true },
   // 是否开启调试模式；多实例时仅主实例生效
   debug: { type: 'boolean', default: false },
-  // 与小程序打通时忽略的字段
+  // 与小程序打通时忽略的字段（不推荐使用，仅保留向下兼容，建议在vdsConfig.embeddedAdapter.ignoreFields中配置）
   embeddedIgnore: { type: 'array', default: [] },
   // 与小程序打通时的配置项
   embeddedAdapter: {
     type: 'object',
-    default: { circleServerUrl: '' }
+    default: {}
   },
   // 是否启用增强UA获取（仅主实例生效）
   extraUA: { type: 'boolean', default: true },
@@ -58,7 +58,7 @@ export const DEFAULT_SETTINGS = {
   gtouchHost: { type: 'string', default: '' },
   // 是否开启哈希路由地址解析；多实例时仅主实例生效
   hashtag: { type: 'boolean', default: false },
-  // 数据上报忽略字段
+  // 数据上报忽略字段（通用配置，会忽略事件context中的指定字段）
   ignoreFields: { type: 'array', default: [] },
   // 曝光比例
   impressionScale: { type: 'number', default: 0 },
@@ -74,7 +74,7 @@ export const DEFAULT_SETTINGS = {
   platform: { type: 'string', default: 'web' },
   // 请求上报的超时时长
   requestTimeout: { type: 'number', default: 5000 },
-  // 与小程序做打通操作时是否重写参数
+  // 与小程序做打通操作时是否重写参数（不推荐使用，仅保留向下兼容，建议在vdsConfig.embeddedAdapter.rewriteQuery中配置）
   rewriteQuery: { type: 'boolean', default: true },
   // 指定默认上报方式
   sendType: { type: 'string', default: 'beacon' },
@@ -96,6 +96,7 @@ export const DEFAULT_SETTINGS = {
 
 // 不管实例直接调用的方法
 export const DIRECT_HANDLERS = [
+  'destroy', // 卸载 SDK，仅清理运行时内存和监听
   'getPlugins', // 获取所有已加载插件
   'getDeviceId', // 获取设备id
   'getUserAgent', // 获取增强的用户代理信息

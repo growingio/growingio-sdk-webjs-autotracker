@@ -25,6 +25,13 @@ class Page implements PageType {
   public pageListeners: any;
   // 页面属性(下一次发page事件[sendPage或自动page]时取用即删除)
   public pageProps: any;
+  private historyPushState: any;
+  private historyReplaceState: any;
+  private hookedPushState: any;
+  private hookedReplaceState: any;
+  private historyHooked = false;
+  // history API 触发的页面解析会延迟到当前调用栈结束后执行；卸载时必须一并取消。
+  private pageChangeTimers: number[] = [];
   constructor(public growingIO: GrowingIOType) {
     this.title = niceTry(() => document.title.slice(0, 255)) ?? '';
     this.lastLocation = { ...window.location };
@@ -88,6 +95,10 @@ class Page implements PageType {
 
   // 页面触发事件
   handlePage = () => {
+    // history 回调可能已经入队，此时 SDK 已卸载并清空运行时配置。
+    if (!this.growingIO.gioSDKInitialized || !this.growingIO.vdsConfig) {
+      return;
+    }
     const {
       vdsConfig: { hashtag },
       dataStore
@@ -109,29 +120,48 @@ class Page implements PageType {
     }
   };
 
+  private scheduleHandlePage = () => {
+    let timer: number;
+    timer = window.setTimeout(() => {
+      this.pageChangeTimers = this.pageChangeTimers.filter(
+        (pendingTimer) => pendingTimer !== timer
+      );
+      this.handlePage();
+    });
+    this.pageChangeTimers.push(timer);
+  };
+
   // 对pushState和replaceState进行hook，添加监听
   hookHistory = () => {
+    if (this.historyHooked) {
+      return;
+    }
     const pushState = window.history.pushState;
     const replaceState = window.history.replaceState;
     const self = this;
     if (pushState) {
       niceTry(
         () =>
-          (window.history.pushState = function (...args) {
-            pushState.apply(window.history, args);
-            setTimeout(self.handlePage);
-          })
+          (this.hookedPushState = window.history.pushState =
+            function (...args) {
+              pushState.apply(window.history, args);
+              self.scheduleHandlePage();
+            })
       );
     }
     if (replaceState) {
       niceTry(
         () =>
-          (window.history.replaceState = function (...args) {
-            replaceState.apply(window.history, args);
-            setTimeout(self.handlePage);
-          })
+          (this.hookedReplaceState = window.history.replaceState =
+            function (...args) {
+              replaceState.apply(window.history, args);
+              self.scheduleHandlePage();
+            })
       );
     }
+    this.historyPushState = pushState;
+    this.historyReplaceState = replaceState;
+    this.historyHooked = true;
     // back、forward、go事件会触发popstate事件（pushState和replaceState不会触发）
     addListener(window, 'popstate', this.handlePage);
     // hash路由要单独监听
@@ -139,6 +169,26 @@ class Page implements PageType {
     if (hashtag) {
       addListener(window, 'hashchange', this.handlePage);
     }
+  };
+
+  // 移除 SDK 注入的 history hook 和页面监听，不影响后续覆盖 history 的其他代码。
+  unhookHistory = () => {
+    this.pageChangeTimers.forEach((timer) => window.clearTimeout(timer));
+    this.pageChangeTimers = [];
+    if (!this.historyHooked) {
+      return;
+    }
+    if (window.history.pushState === this.hookedPushState) {
+      window.history.pushState = this.historyPushState;
+    }
+    if (window.history.replaceState === this.hookedReplaceState) {
+      window.history.replaceState = this.historyReplaceState;
+    }
+    window.removeEventListener('popstate', this.handlePage, true);
+    window.removeEventListener('hashchange', this.handlePage, true);
+    this.historyHooked = false;
+    this.hookedPushState = undefined;
+    this.hookedReplaceState = undefined;
   };
 
   // 给事件合并页面属性

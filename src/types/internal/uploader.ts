@@ -22,6 +22,9 @@ export interface UploaderType {
   
   /** 请求中的请求数 */
   requestingNum: number;
+
+  /** 取消在途请求、延迟重试以及内存队列。 */
+  destroy: () => void;
   
   /** 
    * 获取积压队列
@@ -47,6 +50,9 @@ export interface UploaderType {
    * @param eventData 事件数据
    */
   sendEvent: (eventData: any) => void;
+
+  /** 通知 Uploader 一个由插件异步持有的发送已经完成。 */
+  requestSuccessFn: (data: any) => void;
   
   /** 
    * 请求错误回调

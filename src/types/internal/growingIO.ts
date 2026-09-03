@@ -94,6 +94,9 @@ export interface GrowingIOType {
    */
   init: (options: any) => boolean;
 
+  /** 卸载 SDK，仅清理当前页面的运行时内存与监听 */
+  destroy: () => boolean;
+
   /**
    * 注册插件
    * @param plugins 插件数组

@@ -6,7 +6,23 @@
 import { EXTEND_EVENT } from '@/types/internal/events';
 import { GrowingIOType } from '@/types/internal/growingIO';
 import { hashCode, niceTry } from '@/utils/tools';
-import { includes, isString, toString, unset } from '@/utils/glodash';
+import { has, includes, isString, toString, unset } from '@/utils/glodash';
+
+// 全局配置项，这些配置项不跟trackingId强绑定，应该统一使用主实例的配置
+const GLOBAL_CONFIG_KEYS = [
+  'hashtag',
+  'debug',
+  'autotrack',
+  'compress',
+  'cookieDomain',
+  'forceLogin',
+  'idMapping',
+  'performance',
+  'penetrateHybrid',
+  'gtouchHost',
+  'originalSource',
+  'impressionScale'
+];
 
 export default class GioMultipleInstances {
   public pluginVersion: string;
@@ -34,7 +50,19 @@ export default class GioMultipleInstances {
         unset(vds, 'subInstance');
         return vds;
       } else {
-        return this.growingIO.subInstance[trackingId];
+        // 子实例配置需要合并全局配置项
+        const subVds = this.growingIO.subInstance[trackingId] || {};
+        const mainVds = this.growingIO.vdsConfig;
+
+        // 合并全局配置项
+        const mergedVds = { ...subVds };
+        GLOBAL_CONFIG_KEYS.forEach((key) => {
+          if (has(mainVds, key)) {
+            mergedVds[key] = mainVds[key];
+          }
+        });
+
+        return mergedVds;
       }
     };
 

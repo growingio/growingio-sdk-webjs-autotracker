@@ -13,9 +13,13 @@ declare interface Window {
   ActiveXObject?: any;
   analytics?: any;
   collectEvent?: any;
+  dataLayer?: any;
+  ga?: any;
   gdp: any;
   gio: any;
+  google_tag_manager?: any;
   GrowingWebViewJavascriptBridge: IGrowingWebViewJavascriptBridge;
+  gtag?: any;
   vds: any;
   XDomainRequest: any;
   gioSDKInstalled?: any;

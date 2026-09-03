@@ -18,6 +18,12 @@ export default class GioPerformance {
   private inited = false;
   // 缓存队列，SDK初始化完成之后再根据性能的配置项发送数据
   private cacheQueue: any[] = [];
+  private onSDKInitialized = () => this.init();
+  private onOptionChange = ({ optionName, optionValue }) => {
+    if (optionName === 'dataCollect' && optionValue === true) {
+      this.sendCacheQuene();
+    }
+  };
   constructor(public growingIO: GrowingIOType) {
     this.pluginVersion = '__PLUGIN_VERSION__';
     ut = this.growingIO.utils;
@@ -26,19 +32,13 @@ export default class GioPerformance {
       this.init();
     } else {
       // 采集SDK初始化完成之前就加载好APM
-      this.growingIO.emitter.on(EMIT_MSG.SDK_INITIALIZED, () => {
-        this.init();
-      });
+      this.growingIO.emitter.on(
+        EMIT_MSG.SDK_INITIALIZED,
+        this.onSDKInitialized
+      );
     }
     // 采集开关从关闭到打开时要把队列中存的启动和错误都发出去
-    this.growingIO.emitter?.on(
-      EMIT_MSG.OPTION_CHANGE,
-      ({ optionName, optionValue }) => {
-        if (optionName === 'dataCollect' && optionValue === true) {
-          this.sendCacheQuene();
-        }
-      }
-    );
+    this.growingIO.emitter?.on(EMIT_MSG.OPTION_CHANGE, this.onOptionChange);
   }
 
   // 根据初始化配置项确认性能监控模块是否开启
@@ -79,13 +79,13 @@ export default class GioPerformance {
     if (!eventName || !attributes) {
       return;
     }
-    
+
     const {
       dataStore: { eventContextBuilder, eventConverter },
       vdsConfig,
       gioSDKInitialized
     } = this.growingIO;
-    
+
     // SDK没初始化完成或初始化关闭采集开关的事件先存起来，等SDK初始化完成或开启采集开关再发
     if (!gioSDKInitialized || !vdsConfig.dataCollect) {
       this.cacheQueue.push({
@@ -95,7 +95,7 @@ export default class GioPerformance {
       });
       return;
     }
-    
+
     // 处理过长的小数
     ut.forEach(attributes, (v, k) => {
       if (ut.isNaN(v) || ut.isNil(v)) {
@@ -103,22 +103,34 @@ export default class GioPerformance {
       }
       attributes[k] = ut.fixed(v, 0);
     });
-    
+
     const event = {
       eventType: 'CUSTOM',
       eventName,
       ...eventContextBuilder()
     };
-    
+
     event.attributes = limitObject({
       ...(event.attributes ?? {}),
       ...attributes
     });
-    
+
     if (eventTime) {
       event.timestamp = eventTime;
     }
-    
+
     eventConverter(event);
+  };
+
+  destroy = () => {
+    this.monitor?.destroy();
+    this.exception?.destroy();
+    this.network?.destroy();
+    this.cacheQueue = [];
+    this.growingIO.emitter?.off(
+      EMIT_MSG.SDK_INITIALIZED,
+      this.onSDKInitialized
+    );
+    this.growingIO.emitter?.off(EMIT_MSG.OPTION_CHANGE, this.onOptionChange);
   };
 }

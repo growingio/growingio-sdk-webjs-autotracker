@@ -30,6 +30,10 @@ export interface InitOptions {
   embeddedAdapter?: {
     /** 小程序服务器URL */
     circleServerUrl?: string;
+    /** 与小程序打通时是否重写参数，默认为true */
+    rewriteQuery?: boolean;
+    /** 数据上报忽略字段（嵌入适配专用） */
+    ignoreFields?: string[];
   };
   /** 是否开启增强型UA，默认为true */
   extraUA?: boolean;
@@ -41,7 +45,7 @@ export interface InitOptions {
   gtouchHost?: string;
   /** 是否开启哈希路由地址解析，默认为false */
   hashtag?: boolean;
-  /** 数据上报忽略字段 */
+  /** 数据上报忽略字段（通用配置） */
   ignoreFields?: string[];
   /** 曝光比例 */
   impressionScale?: number;
@@ -170,6 +174,11 @@ export type PageListenerCallback = (pageInfo: {
  * 包含用户常用的API方法签名
  */
 export interface GrowingIOInstance {
+  /**
+   * 卸载 SDK，清理当前页面的运行时内存、监听、待发送队列和 vds 配置；不清除 cookie、localStorage 或全局 gdp 入口。后续可通过 gdp('init', ...) 使用默认值或新配置创建实例。
+   */
+  destroy(): boolean;
+
   /**
    * 初始化SDK
    * @param projectId 项目ID
@@ -519,6 +528,7 @@ type StrictMethod =
   | 'clearPageAttributes'
   | 'clearTrackTimer'
   | 'clearUserId'
+  | 'destroy'
   | 'getABTest'
   | 'getDeviceId'
   | 'getOption'
@@ -550,6 +560,7 @@ type StrictArgs<M extends StrictMethod> =
   M extends 'clearPageAttributes' | Prefixed<'clearPageAttributes'> ? [properties: string[] | undefined, callback?: CommonCallback] :
   M extends 'clearTrackTimer' | Prefixed<'clearTrackTimer'> ? [callback?: CommonCallback] :
   M extends 'clearUserId' | Prefixed<'clearUserId'> ? [callback?: CommonCallback] :
+  M extends 'destroy' ? [] :
   M extends 'getABTest' | Prefixed<'getABTest'> ? [layerId: string, callback: ABTestCallback] :
   M extends 'getDeviceId' ? [callback?: CommonCallback] :
   M extends 'getOption' | Prefixed<'getOption'> ? [optionKey: string, callback?: CommonCallback] :
@@ -579,6 +590,7 @@ type StrictReturn<M extends StrictMethod> =
   M extends 'canIUse' ? boolean :
   M extends 'getUserAgent' ? string :
   M extends 'init' | Prefixed<'init'> ? boolean :
+  M extends 'destroy' ? boolean :
   void;
 export type Gdp = {
   <M extends StrictMethod>(method: M, ...args: StrictArgs<M>): StrictReturn<M>;

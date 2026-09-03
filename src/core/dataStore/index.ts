@@ -1,7 +1,6 @@
 import {
   ALLOW_SET_OPTIONS,
   DEFAULT_SETTINGS,
-  IGNORE_PARAMS,
   PLATFORM,
   STORAGE_KEYS
 } from '@/constants/config';
@@ -31,10 +30,12 @@ import {
 } from '@/utils/tools';
 import { DataStoreType, StorageKeyType } from '@/types/internal/dataStore';
 import { GrowingIOType } from '@/types/internal/growingIO';
+import { StorageType } from '@/types/internal/storage';
 import EMIT_MSG from '@/constants/emitMsg';
 import EventContextBuilder from './eventContextBuilder';
 import Page from './page';
 import PageType from '@/types/internal/page';
+import { initGlobalStorage } from '@/core/storage';
 
 class DataStore implements DataStoreType {
   readonly ALLOW_SETTING_KEYS = Object.keys(DEFAULT_SETTINGS);
@@ -50,6 +51,10 @@ class DataStore implements DataStoreType {
   public initializedTrackingIds: string[];
   // 记录发送前拦截回调
   public beforeSendListener: any;
+  // 待处理的 visit 请求，使用 requestId 做全局唯一标识
+  public pendingVisitRequests: any;
+  // originalSource 优先落 localStorage，不可用时退到 memory，避免占用 cookie
+  public originalSourceStorage: StorageType;
   constructor(public growingIO: GrowingIOType) {
     this.currentPage = new Page(this.growingIO);
     this.eventContextBuilderInst = new EventContextBuilder(this.growingIO);
@@ -58,6 +63,13 @@ class DataStore implements DataStoreType {
     this.generalProps = {};
     // 各个实例的发送前拦截回调
     this.beforeSendListener = {};
+    this.pendingVisitRequests = {};
+    // originalSource 不跟随主 storageType：
+    // 这里固定优先使用 localStorage，在不可用时再退到 memory，
+    // 避免默认 cookie 存储把这类对象数据挤进 cookie。
+    this.originalSourceStorage = initGlobalStorage({
+      storageType: 'localstorage'
+    });
     // 保存上一个Page事件，便于下一个Page事件和无埋点事件获取数据
     this.lastPageEvent = {};
     // originalSouceKey初始化
@@ -70,6 +82,10 @@ class DataStore implements DataStoreType {
         };
       }
     });
+    // ON_SEND_AFTER 全局只注册一次：
+    // 所有插件都可以继续订阅这个事件，而 DataStore 自己通过 requestId
+    // 只结算属于当前 pendingVisitRequests 的 VISIT 请求。
+    emitter?.on(EMIT_MSG.ON_SEND_AFTER, this.handleSendAfter);
     this.initializedTrackingIds = [];
     // sdk初始化完成记录trackingId供session更新判断
     emitter.on(EMIT_MSG.SDK_INITIALIZED, ({ trackingId: initTrackingId }) => {
@@ -79,6 +95,9 @@ class DataStore implements DataStoreType {
     emitter?.on(EMIT_MSG.SESSIONID_UPDATE, ({ trackingId }) => {
       if (includes(this.initializedTrackingIds, trackingId)) {
         // session更新要清空积压队列，否则会出现反复重发
+        this.clearPendingVisitRequests(
+          this.growingIO.uploader.hoardingQueue[trackingId]
+        );
         this.growingIO.uploader.hoardingQueue[trackingId] = [];
         // session更新，页面信息要重新解析
         this.currentPage.parsePage();
@@ -99,6 +118,61 @@ class DataStore implements DataStoreType {
       }
     );
   }
+
+  // 清理未发送完成的 visit 待处理记录
+  clearPendingVisitRequests = (events: any[] = []) => {
+    events.forEach((eventData: any) => {
+      if (eventData?.eventType === 'VISIT' && eventData?.requestId) {
+        unset(this.pendingVisitRequests, eventData.requestId);
+      }
+    });
+  };
+
+  // 统一处理发送结束后的 visit 收尾逻辑
+  handleSendAfter = ({ requestData, trackingId, success }: any) => {
+    const requestId = requestData?.requestId;
+    if (!requestId || requestData?.eventType !== 'VISIT') {
+      return;
+    }
+    // 只处理 buildVisitEvent 中登记过的 VISIT，
+    // 避免误消费其他插件或业务代码复用 ON_SEND_AFTER 时发出的事件。
+    const pendingVisit = this.pendingVisitRequests[requestId];
+    if (!pendingVisit || pendingVisit.trackingId !== trackingId) {
+      return;
+    }
+    // 无论成功还是失败，收到终态事件后都先把 pending 记录移除，
+    // 防止同一个 requestId 在后续成功/重试链路里被重复结算。
+    unset(this.pendingVisitRequests, requestId);
+    if (!success) {
+      // 失败场景只做清理，不更新 sentSign，也不消费 originalSource。
+      return;
+    }
+    const { userStore, storage } = this.growingIO;
+    // 存储标记当前session已经发过visit
+    storage.setItem(
+      this.getStorageKey(requestData.trackingId, 'sentSign'),
+      requestData.sessionId
+    );
+    // 刷新设备Id（保持cookie有效期）
+    userStore.setUid(requestData.deviceId);
+    // 刷新userId、userKey和gioId（保持cookie有效期）
+    const userId = userStore.getUserId(trackingId);
+    if (userId && userId === requestData.userId) {
+      userStore.setUserId(trackingId, userStore.getUserId(trackingId));
+    }
+    const userKey = userStore.getUserKey(trackingId);
+    if (userKey && userKey === requestData.userKey) {
+      userStore.setUserKey(trackingId, userStore.getUserKey(trackingId));
+    }
+    const gioId = userStore.getGioId(trackingId);
+    if (gioId && gioId === requestData.gioId) {
+      userStore.setGioId(trackingId, userStore.getGioId(trackingId));
+    }
+    // visit消费过初始来源信息后删除
+    this.originalSourceStorage.removeItem(
+      this.getStorageKey(trackingId, 'originalSource')
+    );
+  };
 
   // 获取采集实例内容 //? 多实例插件会重写该方法
   getTrackerVds = (trackingId: string) =>
@@ -173,10 +247,11 @@ class DataStore implements DataStoreType {
       }
       if (invalid) {
         configs[k] = DEFAULT_SETTINGS[k].default;
-      } else if (k === 'ignoreFields') {
-        configs.ignoreFields = userOptions.ignoreFields.filter((o) =>
-          includes(IGNORE_PARAMS, o)
-        );
+      } else if (k === 'embeddedAdapter') {
+        // 深拷贝embeddedAdapter，兼容未传场景
+        configs.embeddedAdapter = isObject(userOptions?.embeddedAdapter)
+          ? JSON.parse(JSON.stringify(userOptions.embeddedAdapter))
+          : JSON.parse(JSON.stringify(DEFAULT_SETTINGS.embeddedAdapter.default));
       } else {
         configs[k] = userOptions[k];
         if (includes(['dataCollect', 'autotrack'], k) && !configs[k]) {
@@ -223,7 +298,7 @@ class DataStore implements DataStoreType {
     if (configs.impressionScale > 1 || configs.impressionScale < 0) {
       configs.impressionScale = 0;
     }
-    return {
+    const merged = {
       ...(window[this.growingIO.vdsName] ?? {}),
       ...configs,
       projectId,
@@ -236,11 +311,16 @@ class DataStore implements DataStoreType {
         network: configs.performance?.network ?? false
       }
     };
+    return JSON.parse(JSON.stringify(merged));
   };
 
   // 保存初始来源信息
   setOriginalSource = (trackingId: string) => {
-    const { storage, userStore } = this.growingIO;
+    const {
+      userStore,
+      storage
+    } = this.growingIO;
+    const originalSourceKey = this.getStorageKey(trackingId, 'originalSource');
     const prevSentSession = storage.getItem(
       this.getStorageKey(trackingId, 'sentSign')
     );
@@ -252,21 +332,17 @@ class DataStore implements DataStoreType {
         query,
         referralPage: document.referrer || getReferralPage(trackingId)
       };
-      localStorage.setItem(
-        this.getStorageKey(trackingId, 'originalSource'),
-        JSON.stringify(originalSource)
-      );
+      // originalSource 的生命周期只覆盖“首次 visit 成功发送前”这段时间，
+      // 成功消费后会在 handleSendAfter 中删除。
+      this.originalSourceStorage.setItem(originalSourceKey, originalSource);
     }
   };
 
   // 获取初始来源信息
-  getOriginalSource = (trackingId: string) => {
-    return niceTry(() =>
-      JSON.parse(
-        localStorage.getItem(this.getStorageKey(trackingId, 'originalSource'))
-      )
+  getOriginalSource = (trackingId: string) =>
+    this.originalSourceStorage.getItem(
+      this.getStorageKey(trackingId, 'originalSource')
     );
-  };
 
   // 全局配置修改
   setOption = (trackingId: string, k: string, v: any) => {
@@ -374,9 +450,9 @@ class DataStore implements DataStoreType {
   buildVisitEvent = (trackingId: string, props?: any) => {
     const {
       dataStore: { eventContextBuilder, eventConverter, currentPage },
-      emitter,
       vdsConfig
     } = this.growingIO;
+    const { dataCollect } = this.getTrackerVds(trackingId);
     const originalSource = this.getOriginalSource(trackingId);
     let event: any = {
       eventType: 'VISIT',
@@ -408,35 +484,13 @@ class DataStore implements DataStoreType {
         }
       });
     }
-    // visit事件回调
-    const visitCallback = ({ requestData, trackingId: tid }) => {
-      const { userStore, storage } = this.growingIO;
-      if (requestData.eventType === 'VISIT' && trackingId === tid) {
-        // 存储标记当前session已经发过visit
-        storage.setItem(
-          this.getStorageKey(requestData.trackingId, 'sentSign'),
-          requestData.sessionId
-        );
-        // 刷新设备Id（保持cookie有效期）
-        userStore.setUid(requestData.deviceId);
-        // 刷新userId、userKey和gioId（保持cookie有效期）
-        const userId = userStore.getUserId(tid);
-        if (userId && userId === requestData.userId) {
-          userStore.setUserId(tid, userStore.getUserId(tid));
-        }
-        const userKey = userStore.getUserKey(tid);
-        if (userKey && userKey === requestData.userKey) {
-          userStore.setUserKey(tid, userStore.getUserKey(tid));
-        }
-        const gioId = userStore.getGioId(tid);
-        if (gioId && gioId === requestData.gioId) {
-          userStore.setGioId(tid, userStore.getGioId(tid));
-        }
-        // visit消费过初始来源信息后删除
-        localStorage.removeItem(this.getStorageKey(tid, 'originalSource'));
-      }
-    };
-    emitter.on(EMIT_MSG.ON_SEND_AFTER, visitCallback);
+    if (dataCollect) {
+      // VISIT 在进入 eventConverter 前预生成 requestId，
+      // 这样后续即使统一走 uploader.commitRequest，也能用同一个 requestId
+      // 把“发送结束事件”和这里登记的 pending visit 关联起来。
+      event.requestId = guid();
+      this.pendingVisitRequests[event.requestId] = { trackingId };
+    }
     eventConverter(event);
   };
 
@@ -503,7 +557,11 @@ class DataStore implements DataStoreType {
         }
       }
       // 提交请求队列
-      uploader.commitRequest({ ...convertedEvent, requestId: guid() });
+      uploader.commitRequest({
+        // VISIT 会提前带入 requestId，其他事件则在这里兜底生成。
+        ...convertedEvent,
+        requestId: convertedEvent.requestId || guid()
+      });
     }
   };
 }

@@ -105,37 +105,48 @@ const storageAvailable = () => {
   }
 };
 
-// 处理原来特殊顶级域名存储域错误问题的兼容逻辑
+const getSdkStorageKeys = (projectId: string) => [
+  `${projectId}_gdp_session_id`,
+  'gdp_user_id_gioenc',
+  `${projectId}_gdp_cs1_gioenc`,
+  `${projectId}_gdp_user_key_gioenc`,
+  `${projectId}_gdp_gio_id_gioenc`,
+  `${projectId}_gdp_sequence_ids`,
+  `${projectId}_gdp_session_id_sent`
+];
+
+const isSameCookieDomain = (left: string, right: string) =>
+  left.replace(/^\./, '') === right.replace(/^\./, '');
+
+// 迁移旧域中的 SDK cookie，并删除旧域同名 cookie，避免浏览器读取到旧值。
 const domainConverter = (
   globalStorage: any,
   previousDomain: string,
   projectId: string
 ) => {
-  if (previousDomain && testCookie(previousDomain)) {
-    let tmpStorage = new CookieStorage(previousDomain);
-    const sIdStorageName = `${projectId}_gdp_session_id`;
-    const uidStorageName = 'gdp_user_id_gioenc';
-    const userIdStorageName = `${projectId}_gdp_cs1_gioenc`;
-    const userKeyStorageName = `${projectId}_gdp_user_key_gioenc`;
-    const gioIdStorageName = `${projectId}_gdp_gio_id_gioenc`;
-    const seqStorageIdName = `${projectId}_gdp_sequence_ids`;
-    const visitStorageName = `${projectId}_gdp_session_id_sent`;
-    [
-      sIdStorageName,
-      uidStorageName,
-      userIdStorageName,
-      userKeyStorageName,
-      gioIdStorageName,
-      seqStorageIdName,
-      visitStorageName
-    ].forEach((name: string) => {
-      const value = tmpStorage.getItem(name);
-      if (tmpStorage.hasItem(name)) {
+  if (
+    previousDomain &&
+    globalStorage instanceof CookieStorage &&
+    !isSameCookieDomain(previousDomain, globalStorage.domain) &&
+    testCookie(previousDomain)
+  ) {
+    const previousStorage = new CookieStorage(previousDomain);
+    const storageValues = getSdkStorageKeys(projectId).map((name: string) => ({
+      name,
+      value: previousStorage.getItem(name)
+    }));
+
+    // document.cookie 无法按 domain 精确读取同名 cookie。先清除旧域的副本，
+    // 再读取目标域，才能可靠判断目标域中是否已有更新的数据。
+    storageValues.forEach(({ name }) => previousStorage.removeItem(name));
+    storageValues.forEach(({ name, value }) => {
+      if (
+        typeof globalStorage.getItem(name) === 'undefined' &&
+        typeof value !== 'undefined'
+      ) {
         globalStorage.setItem(name, value);
-        tmpStorage.removeItem(name);
       }
     });
-    tmpStorage = undefined;
   }
 };
 
@@ -164,6 +175,9 @@ export const initGlobalStorage = (vdsConfig: any) => {
       );
       if (activeSetterDomain && testCookie(activeSetterDomain)) {
         store.domain = activeSetterDomain;
+        // 默认域和指定域不同会留下同名 cookie；旧值可能会覆盖指定域中的新值。
+        // 在初始化时迁移并清理默认域，保证后续 setUserId 读取的是当前域的值。
+        domainConverter(store, cookieActiveDomain, projectId);
       } else {
         consoleText('指定Cookie域无效或无权限，使用默认域！', 'warn');
       }
@@ -180,10 +194,6 @@ export const initGlobalStorage = (vdsConfig: any) => {
     if (possibleSpecialDomain && testCookie(possibleSpecialDomain)) {
       domainConverter(globalStorage, possibleSpecialDomain, projectId);
     }
-    // 如果客户中途设置了cookieDomain，要处理一次数据。把原来域下的数据存入当前指定域。（因为清不掉原来域的userId）
-    // if (cookieDomain && testCookie(cookieDomain)) {
-    //   domainConverter(globalStorage, { 隐藏配置项等真有客户需要再加 }, projectId);
-    // }
   }
   return globalStorage;
 };

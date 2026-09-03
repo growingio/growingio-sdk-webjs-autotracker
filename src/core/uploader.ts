@@ -16,6 +16,11 @@ class Uploader implements UploaderType {
   public requestTimeout: number;
   // 请求中的请求数
   public requestingNum: number;
+  // 在途请求的清理函数。销毁 SDK 时需主动取消，避免旧回调访问已释放的配置。
+  private activeRequestCleanups: Set<() => void>;
+  // 失败重试的延迟任务同样属于 uploader 生命周期。
+  private retryTimers: Set<any>;
+  private destroyed: boolean;
   constructor(public growingIO: GrowingIOType) {
     // 主实例的积压缓存队列
     this.hoardingQueue = {};
@@ -25,10 +30,17 @@ class Uploader implements UploaderType {
     this.requestLimit = 10;
     // 正在请求中个数计数
     this.requestingNum = 0;
+    this.activeRequestCleanups = new Set();
+    this.retryTimers = new Set();
+    this.destroyed = false;
     // 主实例的请求监听
-    this.growingIO.emitter.on(EMIT_MSG.OPTION_INITIALIZED, ({ trackingId }) => {
-      this.hoardingQueue[trackingId] = [];
-    });
+    this.growingIO.emitter.on(
+      EMIT_MSG.OPTION_INITIALIZED,
+      ({ trackingId }) => {
+        this.destroyed = false;
+        this.hoardingQueue[trackingId] = [];
+      }
+    );
     this.growingIO.emitter.on(
       EMIT_MSG.ON_SEND_BEFORE,
       ({ requestData, trackingId }: any) => {
@@ -113,48 +125,78 @@ class Uploader implements UploaderType {
 
   // 发送事件
   sendEvent = (eventData: any) => {
-    const { vdsConfig, useHybridInherit, plugins } = this.growingIO;
-    // 预处理的数据（删除了requestType、trackingId和requestId，可以直接打log和发送）
-    const preprocessedData = { ...eventData };
-    const sendURL = this.generateURL(eventData.trackingId);
-    unset(preprocessedData, ['requestType', 'trackingId', 'requestId']);
-    // 开启debug模式时，打印事件日志
-    if (vdsConfig.debug) {
-      console.log(
-        '[GrowingIO Debug]:',
-        // replace是为了兼容Safari，移除Safari日志中的斜杠
-        JSON.stringify(preprocessedData, null, 2).replace(
-          /"/g,
-          isSafari() ? '' : '"'
-        )
-      );
+    let requestStarted = false;
+    let useHybridInherit = false;
+    let requestData: EVENT | string = '';
+    let requestURL = '';
+    // Hybrid Bridge 延迟注入期间由插件暂存事件；发送槽位由插件完成或失败时归还。
+    if (eventData.__gioHybridPending) {
+      this.requestingNum += 1;
+      return;
     }
-    this.requestingNum += 1;
-    // 与native打通时把事件广播出去就好了，让插件收事件进行转发
-    if (useHybridInherit === eventData.trackingId) {
+    try {
+      const { vdsConfig, plugins } = this.growingIO;
+      // 预处理的数据（删除了requestType、trackingId和requestId，可以直接打log和发送）
+      const preprocessedData = { ...eventData };
+      const sendURL = this.generateURL(eventData.trackingId);
+      unset(preprocessedData, ['requestType', 'trackingId', 'requestId']);
+      // 开启debug模式时，打印事件日志
+      if (vdsConfig.debug) {
+        console.log(
+          '[GrowingIO Debug]:',
+          // replace是为了兼容Safari，移除Safari日志中的斜杠
+          JSON.stringify(preprocessedData, null, 2).replace(
+            /"/g,
+            isSafari() ? '' : '"'
+          )
+        );
+      }
+      this.requestingNum += 1;
+      requestStarted = true;
+      // 与native打通时把事件广播出去就好了，让插件收事件进行转发
+      useHybridInherit =
+        this.growingIO.useHybridInherit === eventData.trackingId;
+      if (!useHybridInherit) {
+        // 经过加密逻辑的预处理数据
+        requestData = { ...preprocessedData };
+        let compressType;
+        if (vdsConfig.compress && plugins?.gioCompress) {
+          if (eventData.requestType === 'image') {
+            compressType = '11';
+            requestData = plugins?.gioCompress?.compressToEncodedURIComponent(
+              JSON.stringify([requestData])
+            );
+          } else {
+            compressType = '1';
+            requestData = plugins?.gioCompress?.compressToUint8Array(
+              JSON.stringify([requestData])
+            );
+          }
+        } else {
+          compressType = '0';
+          requestData = JSON.stringify([requestData]);
+        }
+        requestURL = `${sendURL}?stm=${+Date.now()}&compress=${compressType}`;
+      }
+    } catch (_error) {
+      if (requestStarted) {
+        // 压缩、地址生成或分发同步异常不能泄漏并发槽位。
+        this.requestFailFn(eventData);
+      } else {
+        // 还未占用并发槽位时也要推进队列，避免当前请求阻塞后续事件。
+        this.growingIO.emitter?.emit(EMIT_MSG.ON_SEND_AFTER, {
+          requestData: { ...eventData },
+          trackingId: eventData.trackingId,
+          success: false
+        });
+        this.initiateRequest(eventData.trackingId);
+      }
+      return;
+    }
+    if (useHybridInherit) {
       this.requestSuccessFn(eventData);
       return false;
     }
-    // 经过加密逻辑的预处理数据
-    let requestData: EVENT | string = { ...preprocessedData };
-    let compressType;
-    if (vdsConfig.compress && plugins?.gioCompress) {
-      if (eventData.requestType === 'image') {
-        compressType = '11';
-        requestData = plugins?.gioCompress?.compressToEncodedURIComponent(
-          JSON.stringify([requestData])
-        );
-      } else {
-        compressType = '1';
-        requestData = plugins?.gioCompress?.compressToUint8Array(
-          JSON.stringify([requestData])
-        );
-      }
-    } else {
-      compressType = '0';
-      requestData = JSON.stringify([requestData]);
-    }
-    const requestURL = `${sendURL}?stm=${+Date.now()}&compress=${compressType}`;
     switch (eventData.requestType) {
       case 'beacon':
         this.sendByBeacon(eventData, requestData as string, requestURL);
@@ -177,7 +219,13 @@ class Uploader implements UploaderType {
     requestData: string,
     requestURL: string
   ) => {
-    const sendStatus = navigator.sendBeacon(requestURL, requestData);
+    let sendStatus = false;
+    try {
+      sendStatus = navigator.sendBeacon(requestURL, requestData);
+    } catch (_error) {
+      this.requestFailFn(eventData, 'xhr');
+      return;
+    }
     if (sendStatus) {
       this.requestSuccessFn(eventData);
     } else {
@@ -191,45 +239,74 @@ class Uploader implements UploaderType {
     requestData: string,
     requestURL: string
   ) => {
-    const { requestTimeout } = this.growingIO.dataStore.getTrackerVds(
-      eventData.trackingId
-    );
-    const xhr = new XMLHttpRequest();
-    // 请求带cookie的现代浏览器
-    if (xhr) {
-      xhr.open('POST', requestURL, true);
-      xhr.onload = () => {
-        if (xhr.status === 204) {
-          this.requestSuccessFn(eventData);
-        } else {
-          this.requestFailFn(eventData, 'image');
-        }
-      };
-      xhr.ontimeout =
-        xhr.onerror =
-        xhr.onabort =
-          () => {
+    let unregisterRequest: (() => void) | undefined;
+    let cancelRequest: (() => void) | undefined;
+    try {
+      const { requestTimeout } = this.growingIO.dataStore.getTrackerVds(
+        eventData.trackingId
+      );
+      const xhr = new XMLHttpRequest();
+      // 请求带cookie的现代浏览器
+      if (xhr) {
+        xhr.open('POST', requestURL, true);
+        cancelRequest = () => {
+          xhr.onload = null;
+          xhr.ontimeout = null;
+          xhr.onerror = null;
+          xhr.onabort = null;
+          xhr.abort();
+        };
+        unregisterRequest = this.registerActiveRequest(cancelRequest);
+        xhr.onload = () => {
+          unregisterRequest?.();
+          if (xhr.status === 204) {
+            this.requestSuccessFn(eventData);
+          } else {
             this.requestFailFn(eventData, 'image');
-          };
-      xhr.setRequestHeader('Content-Type', 'text/plain;charset=UTF-8');
-      xhr.timeout = requestTimeout;
-      xhr.send(requestData);
-      return;
-    } else if ((window as any)?.XDomainRequest) {
-      // IE 7, 8, 9 and beta versions of 10
-      const xdr = new window.XDomainRequest();
-      xdr.open('POST', requestURL.replace('https://', 'http://'), true);
-      xdr.onload = () => {
-        if (xdr.status === 204) {
-          this.requestSuccessFn(eventData);
-        } else {
+          }
+        };
+        xhr.ontimeout =
+          xhr.onerror =
+          xhr.onabort =
+            () => {
+              unregisterRequest?.();
+              this.requestFailFn(eventData, 'image');
+            };
+        xhr.setRequestHeader('Content-Type', 'text/plain;charset=UTF-8');
+        xhr.timeout = requestTimeout;
+        xhr.send(requestData);
+        return;
+      } else if ((window as any)?.XDomainRequest) {
+        // IE 7, 8, 9 and beta versions of 10
+        const xdr = new window.XDomainRequest();
+        xdr.open('POST', requestURL.replace('https://', 'http://'), true);
+        cancelRequest = () => {
+          xdr.onload = null;
+          xdr.ontimeout = null;
+          xdr.onerror = null;
+          xdr.abort();
+        };
+        unregisterRequest = this.registerActiveRequest(cancelRequest);
+        xdr.onload = () => {
+          unregisterRequest?.();
+          if (xdr.status === 204) {
+            this.requestSuccessFn(eventData);
+          } else {
+            this.requestFailFn(eventData, 'image');
+          }
+        };
+        xdr.onerror = xdr.ontimeout = () => {
+          unregisterRequest?.();
           this.requestFailFn(eventData, 'image');
-        }
-      };
-      xdr.onerror = xdr.ontimeout = () => {
+        };
+        xdr.send(requestData);
+      } else {
         this.requestFailFn(eventData, 'image');
-      };
-      xdr.send(requestData);
+      }
+    } catch (_error) {
+      unregisterRequest?.();
+      cancelRequest?.();
+      this.requestFailFn(eventData, 'image');
     }
   };
 
@@ -239,67 +316,120 @@ class Uploader implements UploaderType {
     requestData: string,
     requestURL: string
   ) => {
-    const { requestTimeout } = this.growingIO.dataStore.getTrackerVds(
-      eventData.trackingId
-    );
-    const src = `${requestURL}&data=${requestData}`;
-    let img = document.createElement('img');
-    img.width = 1;
-    img.height = 1;
-    // 手动控制图片请求的超时时长
-    let t = window.setTimeout(() => {
-      this.requestingNum -= 1;
-      this.clearImage(img);
-      window.clearTimeout(t);
-      t = null;
-      this.initiateRequest(eventData.trackingId);
-    }, requestTimeout);
-    img.onload = () => {
-      this.requestSuccessFn(eventData);
-      this.clearImage(img);
-      window.clearTimeout(t);
-      t = null;
-    };
-    img.onerror = img.onabort = () => {
-      this.requestSuccessFn(eventData);
-      this.clearImage(img);
-      window.clearTimeout(t);
-      t = null;
-    };
-    img.src = src;
+    let img: any;
+    let t: any;
+    let unregisterRequest: (() => void) | undefined;
+    let cancelRequest: (() => void) | undefined;
+    try {
+      const { requestTimeout } = this.growingIO.dataStore.getTrackerVds(
+        eventData.trackingId
+      );
+      const src = `${requestURL}&data=${requestData}`;
+      img = document.createElement('img');
+      img.width = 1;
+      img.height = 1;
+      // 手动控制图片请求的超时时长
+      cancelRequest = () => {
+        window.clearTimeout(t);
+        this.clearImage(img);
+      };
+      unregisterRequest = this.registerActiveRequest(cancelRequest);
+      t = window.setTimeout(() => {
+        unregisterRequest?.();
+        this.clearImage(img);
+        window.clearTimeout(t);
+        t = null;
+        // image 模式超时后不重试、直接丢弃，但仍然要发一个“发送流程已结束”的事件，
+        // 让依赖 ON_SEND_AFTER 的上层逻辑能够拿到明确的失败态并继续推进队列。
+        this.requestCompleteFn(eventData, false);
+      }, requestTimeout);
+      img.onload = () => {
+        unregisterRequest?.();
+        this.requestSuccessFn(eventData);
+        this.clearImage(img);
+        window.clearTimeout(t);
+        t = null;
+      };
+      img.onerror = img.onabort = () => {
+        unregisterRequest?.();
+        // error/abort 与 timeout 一样都属于终态失败：
+        // 不重试，不再伪装成成功，只广播 success=false 的结束事件。
+        this.requestCompleteFn(eventData, false);
+        this.clearImage(img);
+        window.clearTimeout(t);
+        t = null;
+      };
+      img.src = src;
+    } catch (_error) {
+      unregisterRequest?.();
+      cancelRequest?.();
+      this.requestCompleteFn(eventData, false);
+    }
   };
 
   // 清理图片请求
   clearImage = (img: any) => {
-    img.src = '';
     img.onload = () => {};
-    img.onerror = img.onerabort = () => {};
+    img.onerror = img.onabort = () => {};
+    img.src = '';
     img = null;
   };
 
-  // 请求成功的回调
-  requestSuccessFn = (eventData: any) => {
-    this.requestingNum -= 1;
-    // 重新赋值更新session有效期
-    const tSession = this.growingIO.userStore.getSessionId(
-      eventData.trackingId
-    );
-    if (tSession === eventData.sessionId) {
-      this.growingIO.userStore.setSessionId(eventData.trackingId, tSession);
+  /** Registers cleanup for a request that can complete after SDK destruction. */
+  private registerActiveRequest = (cleanup: () => void) => {
+    this.activeRequestCleanups.add(cleanup);
+    return () => this.activeRequestCleanups.delete(cleanup);
+  };
+
+  // 停止所有异步上报，防止销毁后的回调读取已清理的 vdsConfig。
+  destroy = () => {
+    this.destroyed = true;
+    this.activeRequestCleanups.forEach((cleanup) => cleanup());
+    this.activeRequestCleanups.clear();
+    this.retryTimers.forEach((timer) => window.clearTimeout(timer));
+    this.retryTimers.clear();
+    this.requestQueue = [];
+    this.hoardingQueue = {};
+    this.requestingNum = 0;
+  };
+
+  // 请求结束后的统一回调
+  requestCompleteFn = (eventData: any, success: boolean) => {
+    if (this.destroyed) {
+      return;
     }
+    this.requestingNum -= 1;
+    if (success) {
+      // 重新赋值更新session有效期
+      const tSession = this.growingIO.userStore.getSessionId(
+        eventData.trackingId
+      );
+      if (tSession === eventData.sessionId) {
+        this.growingIO.userStore.setSessionId(eventData.trackingId, tSession);
+      }
+    }
+    // ON_SEND_AFTER 现在表达的是“本次客户端发送流程结束”，
+    // 而不是“服务端一定确认成功”，所以会额外带 success 字段区分终态结果。
     this.growingIO.emitter?.emit(EMIT_MSG.ON_SEND_AFTER, {
       // 这里不能直接传对象引用，可能会导致收emitter消息时改动对象影响这里对象的值
       requestData: { ...eventData },
-      trackingId: eventData.trackingId
+      trackingId: eventData.trackingId,
+      success
     });
     this.initiateRequest(eventData.trackingId);
   };
+
+  // 请求成功的回调
+  requestSuccessFn = (eventData: any) => this.requestCompleteFn(eventData, true);
 
   // 请求失败的回调
   requestFailFn = (
     eventData: any,
     nextReqType?: 'beacon' | 'xhr' | 'image'
   ) => {
+    if (this.destroyed) {
+      return;
+    }
     this.requestingNum -= 1;
     // 发送失败的事件会重新推入请求队列
     const eventExist = this.requestQueue.some(
@@ -309,11 +439,25 @@ class Uploader implements UploaderType {
     if (!eventExist && nextReqType) {
       // 延迟800毫秒后再推入请求队列，给网络一点恢复时间
       let t = window.setTimeout(() => {
+        this.retryTimers.delete(t);
+        if (this.destroyed) {
+          return;
+        }
         this.requestQueue.push({ ...eventData, requestType: nextReqType });
         this.initiateRequest(eventData.trackingId);
         window.clearTimeout(t);
         t = null;
       }, 800);
+      this.retryTimers.add(t);
+    } else {
+      // 没有下一跳发送方案时，这次请求在客户端视角已经终态结束；
+      // 这里同样广播 ON_SEND_AFTER，但 success=false，供上层做失败分支处理。
+      this.growingIO.emitter?.emit(EMIT_MSG.ON_SEND_AFTER, {
+        requestData: { ...eventData },
+        trackingId: eventData.trackingId,
+        success: false
+      });
+      this.initiateRequest(eventData.trackingId);
     }
   };
 }

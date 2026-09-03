@@ -43,8 +43,14 @@ export function rewriter(
 export default class Network {
   private buildNetworkEvent: (attributes: any) => void;
   private excludeRegExp: RegExp | string | any[];
-  private originXHR: any;
+  private originXHROpen: any;
+  private originXHRSend: any;
+  private hookedXHROpen: any;
+  private hookedXHRSend: any;
   private originFetch: any;
+  private hookedFetch: any;
+  private originGenerateURL: any;
+  private hookedGenerateURL: any;
   private gdpRequestURL: string;
   constructor(
     public growingIO: GrowingIOType,
@@ -79,15 +85,16 @@ export default class Network {
     }
     // 重写生成地址的方法，sdk在性能分析时需要拿到主实例的请求地址做判断用
     const self = this;
-    const originFunc = this.growingIO.uploader.generateURL;
-    this.growingIO.uploader.generateURL = function () {
-      const result = originFunc.apply(this, arguments);
+    this.originGenerateURL = this.growingIO.uploader.generateURL;
+    this.hookedGenerateURL = function () {
+      const result = self.originGenerateURL.apply(this, arguments);
       const trackingId = arguments[0];
       if (trackingId === self.growingIO.trackingId) {
         self.gdpRequestURL = result;
       }
       return result;
     };
+    this.growingIO.uploader.generateURL = this.hookedGenerateURL;
   }
 
   initOptions = () => {
@@ -141,51 +148,56 @@ export default class Network {
   // 重写XHR
   hookXHR = () => {
     const self = this;
-    this.originXHR = window.XMLHttpRequest;
     const originXHRProto = XMLHttpRequest.prototype;
     let gioXHR: any = {};
-    rewriter(originXHRProto, 'open', (originalOpen: XMLHttpRequest['open']) => {
-      return function (this: GioXMLHttpRequest, ...args: any[]): void {
-        this.gio_XHR_id = guid();
-        // 校验过滤url
-        if (!self.verifyUrl(args[1])) {
-          gioXHR[this.gio_XHR_id] = {
-            type: 'XHR',
-            method: args[0],
-            url: args[1]
-          };
-        }
-        originalOpen.apply(this, args);
-      };
-    });
-    rewriter(originXHRProto, 'send', (originalSend: XMLHttpRequest['send']) => {
-      return function (this: GioXMLHttpRequest, ...args: any[]): void {
-        // 在请求内部也进行时长的统计
-        this.addEventListener('loadend', (event: any) => {
-          if (this.gio_XHR_id && gioXHR[this.gio_XHR_id]) {
-            gioXHR[this.gio_XHR_id] = {
-              ...gioXHR[this.gio_XHR_id],
-              duration:
-                (event.timeStamp || self.getTimestamp()) -
-                gioXHR[this.gio_XHR_id].start,
-              status: this.status
-            };
-            self.buildNetworkEvent(gioXHR[this.gio_XHR_id]);
-            unset(gioXHR, this.gio_XHR_id);
-          }
-        });
-        this.addEventListener('error', () => {
-          self.buildErrorEvent({
-            error_title: 'XMLHttpRequest Error',
-            error_content: this.status || 'Unknown error'
-          });
-        });
+    this.originXHROpen = originXHRProto.open;
+    this.hookedXHROpen = function (
+      this: GioXMLHttpRequest,
+      ...args: any[]
+    ): void {
+      this.gio_XHR_id = guid();
+      // 校验过滤url
+      if (!self.verifyUrl(args[1])) {
+        gioXHR[this.gio_XHR_id] = {
+          type: 'XHR',
+          method: args[0],
+          url: args[1]
+        };
+      }
+      self.originXHROpen.apply(this, args);
+    };
+    originXHRProto.open = this.hookedXHROpen;
+    this.originXHRSend = originXHRProto.send;
+    this.hookedXHRSend = function (
+      this: GioXMLHttpRequest,
+      ...args: any[]
+    ): void {
+      // 在请求内部也进行时长的统计
+      this.addEventListener('loadend', (event: any) => {
         if (this.gio_XHR_id && gioXHR[this.gio_XHR_id]) {
-          gioXHR[this.gio_XHR_id].start = self.getTimestamp();
+          gioXHR[this.gio_XHR_id] = {
+            ...gioXHR[this.gio_XHR_id],
+            duration:
+              (event.timeStamp || self.getTimestamp()) -
+              gioXHR[this.gio_XHR_id].start,
+            status: this.status
+          };
+          self.buildNetworkEvent(gioXHR[this.gio_XHR_id]);
+          unset(gioXHR, this.gio_XHR_id);
         }
-        originalSend.apply(this, args);
-      };
-    });
+      });
+      this.addEventListener('error', () => {
+        self.buildErrorEvent({
+          error_title: 'XMLHttpRequest Error',
+          error_content: this.status || 'Unknown error'
+        });
+      });
+      if (this.gio_XHR_id && gioXHR[this.gio_XHR_id]) {
+        gioXHR[this.gio_XHR_id].start = self.getTimestamp();
+      }
+      self.originXHRSend.apply(this, args);
+    };
+    originXHRProto.send = this.hookedXHRSend;
   };
 
   // 重写fetch
@@ -193,56 +205,55 @@ export default class Network {
     const self = this;
     if (window.fetch) {
       this.originFetch = window.fetch;
-      rewriter(window, 'fetch', (originalFetch: typeof window.fetch) => {
-        return function (...args): Promise<Response> {
-          const input = args[0];
-          const config = args[1];
-          let url = '';
-          if (typeOf(input) === 'string') {
-            url = input as string;
-          } else {
-            url = input?.url || '';
-          }
-          let method = 'GET';
-          if (config && config.method) {
-            method = config.method;
-          } else if (typeOf(input) !== 'string' && input?.method) {
-            method = input.method;
-          }
-          let gioFetch;
-          // 校验过滤url
-          if (!self.verifyUrl(url)) {
-            gioFetch = {
-              type: 'Fetch',
-              method,
-              url,
-              start: self.getTimestamp()
-            };
-          }
-          return originalFetch.apply(this, args).then(
-            (response: Response) => {
-              if (gioFetch) {
-                gioFetch = {
-                  ...gioFetch,
-                  duration: self.getTimestamp() - gioFetch.start,
-                  status: response.status
-                };
-                self.buildNetworkEvent(gioFetch);
-              }
-              return response;
-            },
-            (error: any) => {
-              const stacks = error.stack?.split('\n') || [];
-              self.buildErrorEvent({
-                error_title:
-                  stacks[0] || toString(error) || 'Fetch Request Error',
-                error_content: gioFetch?.url || url || 'Unknown URL'
-              });
-              throw error;
+      this.hookedFetch = function (...args): Promise<Response> {
+        const input = args[0];
+        const config = args[1];
+        let url = '';
+        if (typeOf(input) === 'string') {
+          url = input as string;
+        } else {
+          url = input?.url || '';
+        }
+        let method = 'GET';
+        if (config && config.method) {
+          method = config.method;
+        } else if (typeOf(input) !== 'string' && input?.method) {
+          method = input.method;
+        }
+        let gioFetch;
+        // 校验过滤url
+        if (!self.verifyUrl(url)) {
+          gioFetch = {
+            type: 'Fetch',
+            method,
+            url,
+            start: self.getTimestamp()
+          };
+        }
+        return self.originFetch.apply(this, args).then(
+          (response: Response) => {
+            if (gioFetch) {
+              gioFetch = {
+                ...gioFetch,
+                duration: self.getTimestamp() - gioFetch.start,
+                status: response.status
+              };
+              self.buildNetworkEvent(gioFetch);
             }
-          );
-        };
-      });
+            return response;
+          },
+          (error: any) => {
+            const stacks = error.stack?.split('\n') || [];
+            self.buildErrorEvent({
+              error_title:
+                stacks[0] || toString(error) || 'Fetch Request Error',
+              error_content: gioFetch?.url || url || 'Unknown URL'
+            });
+            throw error;
+          }
+        );
+      };
+      window.fetch = this.hookedFetch;
     }
   };
 
@@ -269,11 +280,18 @@ export default class Network {
 
   // 销毁恢复原方法
   destroy = () => {
-    if (this.originXHR) {
-      window.XMLHttpRequest = this.originXHR;
+    const xhrPrototype = window.XMLHttpRequest?.prototype;
+    if (xhrPrototype?.open === this.hookedXHROpen) {
+      xhrPrototype.open = this.originXHROpen;
     }
-    if (this.originFetch && window.fetch) {
+    if (xhrPrototype?.send === this.hookedXHRSend) {
+      xhrPrototype.send = this.originXHRSend;
+    }
+    if (this.originFetch && window.fetch === this.hookedFetch) {
       window.fetch = this.originFetch;
+    }
+    if (this.growingIO.uploader?.generateURL === this.hookedGenerateURL) {
+      this.growingIO.uploader.generateURL = this.originGenerateURL;
     }
   };
 }

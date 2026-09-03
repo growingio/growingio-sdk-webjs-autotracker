@@ -1,10 +1,10 @@
 {
   "name": "gio-webjs-sdk",
-  "version": "4.3.1",
+  "version": "4.4.0",
   "description": "GrowngIO Web/H5/小程序内嵌页/Hybrid数据采集SDK",
   "dependencies": {
     "array-from": "^2.1.1",
-    "gio-web-nodes-parser": "^2.0.18",
+    "gio-web-nodes-parser": "2.1.21",
     "js-cookie": "^3.0.5",
     "mitt": "1.2.0",
     "web-vitals": "^3.5.2"

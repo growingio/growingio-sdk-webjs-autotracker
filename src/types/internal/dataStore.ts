@@ -1,4 +1,6 @@
+import { SEND_AFTER_EVENT } from './events';
 import PageType from './page';
+import { StorageType } from './storage';
 
 /**
  * 用户配置选项接口
@@ -27,6 +29,18 @@ export interface UserOptions {
   /** 与小程序打通时忽略的字段 */
   embeddedIgnore?: string[];
 
+  /** 与小程序打通时的配置项 */
+  embeddedAdapter?: {
+    /** 小程序服务器URL */
+    circleServerUrl?: string;
+    /** 与小程序做打通操作时是否重写参数，默认为true */
+    rewriteQuery?: boolean;
+    /** 数据上报忽略字段 */
+    ignoreFields?: string[];
+    /** 是否开启严格模式，默认为false。开启后仅在小程序环境中打通，且强制不重写用户信息 */
+    strict?: boolean;
+  };
+
   /** 这是否开启增强型UA */
   extraUA?: boolean;
 
@@ -42,7 +56,7 @@ export interface UserOptions {
   /** 是否开启哈希路由地址解析，默认为false */
   hashtag?: boolean;
 
-  /** 数据上报忽略字段 */
+  /** 数据上报忽略字段（通用配置） */
   ignoreFields?: string[];
 
   /** 曝光比例 */
@@ -151,16 +165,27 @@ export type StorageKeyType =
  *
  * 定义了SDK中数据存储的相关方法和属性
  */
+export type DataStoreOptionValue =
+  | OriginOptions
+  | OriginOptions[keyof OriginOptions]
+  | undefined;
+
 export interface DataStoreType {
   /** 已初始化的跟踪ID数组 */
   initializedTrackingIds: string[];
 
+  /** 待处理的 visit 请求 */
+  pendingVisitRequests?: Record<string, { trackingId: string }>;
+
+  /** originalSource 专用存储 */
+  originalSourceStorage?: StorageType;
+
   /**
    * 获取全局会话ID
    * @param trackingId 跟踪ID
-   * @returns 全局会话ID或undefined
+   * @returns 全局会话ID
    */
-  getGsid: (trackingId: string) => string | undefined;
+  getGsid: (trackingId: string) => number;
 
   /**
    * 设置全局会话ID
@@ -249,9 +274,9 @@ export interface DataStoreType {
    * 获取配置项
    * @param trackingId 跟踪ID
    * @param k 配置项键名（可选）
-   * @returns 配置选项对象
+   * @returns 配置选项对象或指定配置项值
    */
-  getOption: (trackingId: string, k?: string) => OriginOptions;
+  getOption: (trackingId: string, k?: string) => DataStoreOptionValue;
 
   /**
    * 更新VDS配置
@@ -276,9 +301,16 @@ export interface DataStoreType {
 
   /**
    * 构建访问事件
+   * @param trackingId 跟踪ID
    * @param props 事件属性（可选）
    */
-  buildVisitEvent: (props?: any) => void;
+  buildVisitEvent: (trackingId: string, props?: any) => void;
+
+  /**
+   * 处理发送结束事件
+   * @param payload 发送结束事件负载
+   */
+  handleSendAfter?: (payload: SEND_AFTER_EVENT) => void;
 
   /**
    * 事件转换器（可选）

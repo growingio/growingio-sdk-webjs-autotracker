@@ -144,3 +144,24 @@ export interface EXTEND_EVENT extends EVENT {
   /** 跟踪ID */
   trackingId: string;
 }
+
+/**
+ * 发送结束事件负载
+ *
+ * 表示一次客户端发送流程已经结束，不论最终是否成功送达
+ */
+export interface SEND_AFTER_EVENT {
+  /** 原始请求数据 */
+  requestData: EXTEND_EVENT;
+
+  /** 跟踪ID */
+  trackingId: string;
+
+  /** 本次发送是否成功 */
+  success: boolean;
+}
+
+/**
+ * 发送结束事件监听器
+ */
+export type SendAfterListener = (payload: SEND_AFTER_EVENT) => void;

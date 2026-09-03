@@ -29,6 +29,20 @@ export default class GioImpressionTracking {
   private intersectionObserver: any;
   private documentReady = false;
   private sentImps: any;
+  private onDocumentReady = () => {
+    if (document.readyState === 'complete') {
+      this.main('listener');
+    }
+  };
+  private onUnload = () => {
+    this.intersectionObserver?.disconnect();
+    this.mutationObserver?.disconnect();
+  };
+  private onOptionInitialized = ({ trackingId }: { trackingId: string }) => {
+    if (trackingId === this.growingIO.trackingId) {
+      this.main('emitter');
+    }
+  };
   constructor(public growingIO: GrowingIOType) {
     this.pluginVersion = '__PLUGIN_VERSION__';
     this.sentImps = {};
@@ -36,31 +50,15 @@ export default class GioImpressionTracking {
       if (document.readyState === 'complete') {
         this.main('listener');
       } else {
-        addListener(
-          document,
-          'readystatechange',
-          () => {
-            if (document.readyState === 'complete') {
-              this.main('listener');
-            }
-          },
-          {
-            once: true
-          }
-        );
+        addListener(document, 'readystatechange', this.onDocumentReady, {
+          once: true
+        });
       }
       this.growingIO.emitter?.on(
         EMIT_MSG.OPTION_INITIALIZED,
-        ({ trackingId }) => {
-          if (trackingId === this.growingIO.trackingId) {
-            this.main('emitter');
-          }
-        }
+        this.onOptionInitialized
       );
-      addListener(window, 'unload', () => {
-        this.intersectionObserver?.disconnect();
-        this.mutationObserver?.disconnect();
-      });
+      addListener(window, 'unload', this.onUnload);
     } else {
       consoleText(
         '当前浏览器不支持半自动埋点，gioImpressionTracking已自动关闭！',
@@ -71,6 +69,9 @@ export default class GioImpressionTracking {
 
   // 监听的初始化（先确保页面和sdk都初始化好了，两个的初始化监听都只执行一次）
   main = (msgType: 'listener' | 'emitter' | 'manual') => {
+    if (!window.IntersectionObserver || !window.MutationObserver) {
+      return;
+    }
     if (includes(['listener', 'manual'], msgType)) {
       // 标记网页已初始化完成
       this.documentReady = true;
@@ -88,6 +89,8 @@ export default class GioImpressionTracking {
 
   // 初始化曝光（视窗相交）监听
   initIntersectionObserver = () => {
+    // 手动刷新监听时必须先断开旧 observer，否则同一个节点会被重复观察和上报。
+    this.intersectionObserver?.disconnect();
     // 数值要大于0，只能无限趋近于0，等于0的时候会导致没出现就会发曝光
     const threshold =
       this.growingIO.vdsConfig?.impressionScale || 0.0000000000001;
@@ -165,9 +168,7 @@ export default class GioImpressionTracking {
         // 动态添加节点
         if (mutRecord.type === 'childList') {
           mutRecord.addedNodes.forEach((target) => {
-            if (target.dataset?.gioImpTrack) {
-              this.intersectionObserver?.observe(target);
-            }
+            this.observeImpressionNodes(target);
           });
         }
       });
@@ -188,6 +189,34 @@ export default class GioImpressionTracking {
         'data-gio-imp-sendto'
       ]
     });
+  };
+
+  // 新增的容器本身可能不带标记，埋点节点在其后代中；两种情况都要观察。
+  private observeImpressionNodes = (target: any) => {
+    if (target?.nodeType !== 1) {
+      return;
+    }
+    if (target.dataset?.gioImpTrack) {
+      this.intersectionObserver?.observe(target);
+    }
+    target
+      .querySelectorAll?.('[data-gio-imp-track]')
+      .forEach((node: Element) => this.intersectionObserver?.observe(node));
+  };
+
+  destroy = () => {
+    document.removeEventListener(
+      'readystatechange',
+      this.onDocumentReady,
+      true
+    );
+    window.removeEventListener('unload', this.onUnload, true);
+    this.onUnload();
+    this.sentImps = {};
+    this.growingIO.emitter?.off(
+      EMIT_MSG.OPTION_INITIALIZED,
+      this.onOptionInitialized
+    );
   };
 
   // 曝光参数获取

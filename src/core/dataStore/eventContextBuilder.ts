@@ -76,9 +76,13 @@ class EventContextBuilder {
         }
       }
     }
-    // 过滤忽略字段（打通时忽略字段可能会失效，字段会继续被小程序覆盖）
-    if (!isEmpty(trackerVds.ignoreFields)) {
-      (trackerVds.ignoreFields as string[]).forEach((o) => {
+    // 过滤忽略字段（支持顶层ignoreFields通用配置和embeddedAdapter.ignoreFields小程序打通配置）
+    const generalIgnoreFields = trackerVds?.ignoreFields ?? [];
+    const embeddedIgnoreFields = trackerVds?.embeddedAdapter?.ignoreFields ?? [];
+    // 合并两种配置并去重
+    const ignoreFields = Array.from(new Set([...generalIgnoreFields, ...embeddedIgnoreFields]));
+    if (!isEmpty(ignoreFields)) {
+      (ignoreFields as string[]).forEach((o) => {
         unset(context, o);
       });
     }

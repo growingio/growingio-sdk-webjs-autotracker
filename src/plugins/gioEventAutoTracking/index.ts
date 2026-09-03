@@ -31,17 +31,17 @@ class TouchHandler {
     const moveEvents = this.hasTouch ? ['touchmove'] : ['mousemove'];
 
     for (const event of startEvents) {
-      addListener(window, event, this.touchStartHandler.bind(this));
+      addListener(window, event, this.touchStartHandler);
     }
     for (const event of moveEvents) {
-      addListener(window, event, this.touchMoveHandler.bind(this));
+      addListener(window, event, this.touchMoveHandler);
     }
     for (const event of stopEvents) {
-      addListener(window, event, this.touchStopHandler.bind(this));
+      addListener(window, event, this.touchStopHandler);
     }
   }
 
-  private touchStartHandler(event: any) {
+  private touchStartHandler = (event: any) => {
     if (event.which > 1) {
       return;
     }
@@ -61,9 +61,9 @@ class TouchHandler {
       isTrusted: true,
       type: 'click'
     };
-  }
+  };
 
-  private touchMoveHandler(event: any) {
+  private touchMoveHandler = (event: any) => {
     const move = {
       adx: Math.abs(
         this._page('x', event) - (this.touchEvent && this.touchEvent.x) || 0
@@ -75,10 +75,10 @@ class TouchHandler {
     if (move.adx > 10 || move.ady > 10) {
       this.touchEvent = null;
     }
-  }
+  };
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  private touchStopHandler(event: any) {
+  private touchStopHandler = (event: any) => {
     const duration =
       +Date.now() - (this.touchEvent && this.touchEvent.time) || 0;
     /*
@@ -99,6 +99,26 @@ class TouchHandler {
       this.handler(this.touchEvent, 'touch');
       this.touchEvent = null;
     }
+  };
+
+  destroy() {
+    const startEvents = this.hasTouch ? ['touchstart'] : ['mousedown'];
+    const stopEvents = this.hasTouch
+      ? ['touchend', 'touchcancel']
+      : ['mouseup', 'mouseleave'];
+    const moveEvents = this.hasTouch ? ['touchmove'] : ['mousemove'];
+    [...startEvents, ...moveEvents, ...stopEvents].forEach((event) => {
+      const handler = startEvents.includes(event)
+        ? this.touchStartHandler
+        : moveEvents.includes(event)
+          ? this.touchMoveHandler
+          : this.touchStopHandler;
+      window.removeEventListener(event, handler, true);
+    });
+    if (this.touchTimeout) {
+      clearTimeout(this.touchTimeout);
+    }
+    this.touchEvent = null;
   }
 
   private _page(coord: string, event: any) {
@@ -114,28 +134,69 @@ const EVENT_TYPE: any = {
 };
 export default class GioEventAutoTracking {
   public pluginVersion: string;
+  private touchHandler?: TouchHandler;
+  private iOSBody?: HTMLElement;
+  private iOSBodyOnClick?: typeof document.body.onclick;
+  private iOSBodyAssignedOnClick?: typeof document.body.onclick;
+  private onOptionInitialized = ({ trackingId }: { trackingId: string }) => {
+    if (trackingId === this.growingIO.trackingId) {
+      this.main();
+    }
+  };
   constructor(public growingIO: GrowingIOType) {
     this.pluginVersion = '__PLUGIN_VERSION__';
     this.growingIO.emitter?.on(
       EMIT_MSG.OPTION_INITIALIZED,
-      ({ trackingId }) => {
-        if (trackingId === this.growingIO.trackingId) {
-          this.main();
-        }
-      }
+      this.onOptionInitialized
     );
   }
 
-  // 初始化监听
+  /**
+   * 初始化监听
+   */
   main = () => {
     addListener(document, 'change', this._handleAction);
     const { vdsConfig }: GrowingIOType = this.growingIO;
     if (vdsConfig.touch) {
-      const touchHandler = new TouchHandler(this._handleAction);
-      touchHandler.main();
+      this.touchHandler = new TouchHandler(this._handleAction);
+      this.touchHandler.main();
     } else {
       addListener(document, 'click', this._handleAction);
+      // 解决iOS WKWebView下click事件不冒泡的问题
+      // iOS WKWebView 中，如果非交互元素没有 onclick 事件或 cursor: pointer 样式，click 事件不会冒泡到 document
+      const ua = navigator.userAgent;
+      if (ua.match(/(iPad|iPhone|iPod)/g)) {
+        const body = document.body;
+        // 给 body 绑定一个空的 onclick 事件，强制启用事件冒泡
+        if (body && !body.onclick) {
+          this.iOSBody = body;
+          this.iOSBodyOnClick = body.onclick;
+          this.iOSBodyAssignedOnClick = () => {};
+          body.onclick = this.iOSBodyAssignedOnClick;
+        }
+      }
     }
+  };
+
+  destroy = () => {
+    document.removeEventListener('change', this._handleAction as any, true);
+    document.removeEventListener('click', this._handleAction as any, true);
+    this.touchHandler?.destroy();
+    if (
+      this.iOSBody &&
+      this.iOSBody.onclick === this.iOSBodyAssignedOnClick &&
+      this.iOSBodyOnClick !== undefined
+    ) {
+      this.iOSBody.onclick = this.iOSBodyOnClick;
+    }
+    this.touchHandler = undefined;
+    this.iOSBody = undefined;
+    this.iOSBodyOnClick = undefined;
+    this.iOSBodyAssignedOnClick = undefined;
+    this.growingIO.emitter?.off(
+      EMIT_MSG.OPTION_INITIALIZED,
+      this.onOptionInitialized
+    );
   };
 
   // 事件分发

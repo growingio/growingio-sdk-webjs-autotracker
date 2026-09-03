@@ -18,7 +18,7 @@ import GrowingIO from '@/core/growingIO';
 import EMIT_MSG from '@/constants/emitMsg';
 
 // 导出类型定义
-export type { 
+export type {
   // API 类型 (用户直接使用)
   InitOptions,
   PageAttributes,
@@ -35,9 +35,9 @@ export type {
   Gdp,
   // 内部类型
   GrowingIOType,
-  PluginItem, 
+  PluginItem,
   PluginsType,
-  OriginOptions, 
+  OriginOptions,
   DataStoreType,
   UserOptions,
   StorageKeyType,
@@ -51,6 +51,7 @@ export type {
 } from '@/types';
 
 let gdp;
+let gioInstance: any;
 const vdsName = window._gio_local_vds || 'vds';
 const namespace = window[vdsName]?.namespace ?? 'gdp';
 (function () {
@@ -67,43 +68,81 @@ const namespace = window[vdsName]?.namespace ?? 'gdp';
     gioSDKInstalled: true
   };
 
-  const gioInstance: any = new GrowingIO();
+  const createGioInstance = () => {
+    gioInstance = new GrowingIO();
+    return gioInstance;
+  };
+  const resetVdsConfig = () => {
+    window[vdsName] = {
+      gioSDKInstalled: true,
+      namespace
+    };
+  };
+  createGioInstance();
   const canIUse = (handlerName: string) =>
-    includes(HANDLERS, handlerName) && !!gioInstance[handlerName];
+    includes(HANDLERS, handlerName) && !!gioInstance?.[handlerName];
   gdp = function (...args) {
     const handlerName = args[0];
+    const rejectCommand = (message: string) => {
+      consoleText(`SDK调用失败，${message}`, 'error');
+      return false;
+    };
+    if (!isString(handlerName) || !handlerName.trim()) {
+      return rejectCommand('方法名必须为非空字符串!');
+    }
+    const handlerParts = handlerName.split('.');
+    if (
+      handlerName !== handlerName.trim() ||
+      handlerParts.length > 2 ||
+      (handlerParts.length === 2 && (!handlerParts[0] || !handlerParts[1]))
+    ) {
+      return rejectCommand(`方法名 ${handlerName} 格式不正确!`);
+    }
     let trackingId = 'g0';
     let handler = handlerName;
-    if (handlerName.indexOf('.') > -1) {
-      trackingId = handlerName.split('.')[0] ?? 'g0'; // 没有指定trackingId，默认为g0
-      handler = handlerName.split('.')[1];
+    if (handlerParts.length === 2) {
+      trackingId = handlerParts[0];
+      handler = handlerParts[1];
+      // 只有实例方法和多实例初始化允许带 trackingId；直接方法不能被伪装为实例方法调用。
+      if (handler !== 'init' && !includes(INSTANCE_HANDLERS, handler)) {
+        return rejectCommand(`方法 ${handlerName} 不支持实例前缀!`);
+      }
     }
-    if (
+    if (handler === 'destroy') {
+      if (!gioInstance) {
+        return true;
+      }
+      const result = gioInstance.destroy();
+      if (result) {
+        resetVdsConfig();
+        gioInstance = undefined;
+      }
+      return result;
+    } else if (handler === 'init') {
+      const instance = gioInstance ?? createGioInstance();
+      const argus = drop(arrayFrom(args));
+      const initialCheckRes: any = initialCheck(instance, argus);
+      if (initialCheckRes) {
+        const { projectId, dataSourceId, appId, userOptions } = initialCheckRes;
+        return instance.init({
+          ...userOptions,
+          projectId,
+          dataSourceId,
+          appId: appId || userOptions.appId,
+          trackingId
+        });
+      }
+      return false;
+    } else if (handler === 'registerPlugins') {
+      const instance = gioInstance ?? createGioInstance();
+      instance.registerPlugins(...drop(arrayFrom(args)));
+    } else if (
       isString(handler) &&
       includes(HANDLERS, handler) &&
-      gioInstance[handler]
+      gioInstance?.[handler]
     ) {
       const argus = drop(arrayFrom(args));
-      // 初始化方法单独处理
-      if (handler === 'init') {
-        const initialCheckRes: any = initialCheck(gioInstance, argus);
-        if (initialCheckRes) {
-          const { projectId, dataSourceId, appId, userOptions } =
-            initialCheckRes;
-          // 返回初始化结果
-          return gioInstance.init({
-            ...userOptions,
-            projectId,
-            dataSourceId,
-            appId: appId || userOptions.appId,
-            trackingId
-          });
-        } else {
-          return false;
-        }
-      } else if (handler === 'registerPlugins') {
-        gioInstance.registerPlugins(...argus);
-      } else if (includes(['setGeneralProps', 'clearGeneralProps'], handler)) {
+      if (includes(['setGeneralProps', 'clearGeneralProps'], handler)) {
         gioInstance[handler](trackingId, ...argus);
       } else if (gioInstance.gioSDKInitialized && gioInstance.vdsConfig) {
         if (includes(INSTANCE_HANDLERS, handler)) {
@@ -119,10 +158,12 @@ const namespace = window[vdsName]?.namespace ?? 'gdp';
       }
     } else if (includes(DEPRECATED_HANDLERS, handler)) {
       consoleText(`方法 ${toString(handler)} 已被弃用，请移除!`, 'warn');
+      return false;
     } else if (handler === 'canIUse') {
       return canIUse(args[1]);
     } else {
       consoleText(`不存在名为 ${toString(handler)} 的方法调用!`, 'error');
+      return false;
     }
     window[vdsName] = {
       ...window[vdsName],
