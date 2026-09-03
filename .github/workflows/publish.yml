@@ -25,7 +25,11 @@ jobs:
           # .npmrc，令 npm 跳过 OIDC Trusted Publishing。
       - name: Enable npm Trusted Publishing
         # Node 22 自带的 npm 可能低于 OIDC Trusted Publishing 所需的 11.5.1。
-        run: npm install --global npm@^11.5.1
+        run: |
+          npm install --global npm@^11.5.1
+          npm --version
+          test -n "$ACTIONS_ID_TOKEN_REQUEST_URL"
+          test -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN"
       - name: Build
         run: |
           rm -rf dist || true  # 兼容dist目录不存在的情况，避免构建报错
@@ -33,7 +37,7 @@ jobs:
           npm run build:es
       - name: Publish to npm
         # npm CLI 使用 GitHub Actions 的 OIDC 短期令牌；不再依赖长期发布 token。
-        run: npm publish --registry=https://registry.npmjs.org/ --tag latest --access public
+        run: npm publish --registry=https://registry.npmjs.org/ --tag latest --access public --provenance
 
   release:
     name: Auto Create Release
