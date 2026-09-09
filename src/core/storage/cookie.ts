@@ -13,7 +13,10 @@ class CookieStorage implements StorageType {
 
   getItem = (key: string) =>
     parseStorageValue(
-      dec(Cookies.get(getActualKey(key), { domain: this.domain, path: '/' }))
+      dec(
+        Cookies.get(getActualKey(key), { domain: this.domain, path: '/' }),
+        key
+      )
     );
 
   setItem = (key: string, value: any, end?: Date) => {

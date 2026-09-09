@@ -17,7 +17,7 @@ class LocalStorage implements StorageType {
         JSON.parse(localStorage.getItem(getActualKey(key)) || '')
       ) || {};
     return isObject(stv) && stv.expiredAt > +Date.now()
-      ? parseStorageValue(dec(stv.value))
+      ? parseStorageValue(dec(stv.value, key))
       : undefined;
   };
 

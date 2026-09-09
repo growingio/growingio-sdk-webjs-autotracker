@@ -15,7 +15,7 @@ class MemoryStorage implements StorageType {
   getItem = (key: string) => {
     const stv = niceTry(() => JSON.parse(mStorage[getActualKey(key)] || ''));
     return isObject(stv) && stv.expiredAt > +Date.now()
-      ? parseStorageValue(dec(stv.value))
+      ? parseStorageValue(dec(stv.value, key))
       : undefined;
   };
 

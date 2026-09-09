@@ -1,4 +1,4 @@
-import { forEach, isArray, isObject, toString } from '@/utils/glodash';
+import { forEach, isArray, isObject, toString, unset } from '@/utils/glodash';
 
 const isPlainObject = (value: any) =>
   isObject(value) && Object.prototype.toString.call(value) === '[object Object]';
@@ -53,5 +53,9 @@ export const normalizeHybridAttributes = (data: any) => {
 };
 
 /** 为 Native 生成独立且可直接 JSON 序列化的事件负载，不修改 Web 上报事件。 */
-export const prepareNativePayload = (data: any) =>
-  normalizeHybridAttributes(cloneNativePayload(data));
+export const prepareNativePayload = (data: any) => {
+  const nativeData = cloneNativePayload(data);
+  // 与 Web 上报一致，内部路由和请求字段不发送给 Native。
+  unset(nativeData, ['trackingId', 'requestId', 'requestType']);
+  return normalizeHybridAttributes(nativeData);
+};

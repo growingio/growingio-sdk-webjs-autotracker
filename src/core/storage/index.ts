@@ -1,5 +1,5 @@
-import { consoleText } from '@/utils/tools';
-import { includes, isEmpty, last } from '@/utils/glodash';
+import { consoleText, niceTry } from '@/utils/tools';
+import { endsWith, includes, isEmpty, isString, last } from '@/utils/glodash';
 import { SPECIAL_TOP_DOMAIN_REG } from '@/constants/regex';
 import Cookies from 'js-cookie';
 import CookieStorage from './cookie';
@@ -115,6 +115,18 @@ const getSdkStorageKeys = (projectId: string) => [
   `${projectId}_gdp_session_id_sent`
 ];
 
+// 4.4.0 写出的 v2 密文旧版本 SDK 无法正确解密，初始化时重写为兼容格式
+const migrateEncryptedValues = (globalStorage: any, projectId: string) => {
+  getSdkStorageKeys(projectId)
+    .filter((name: string) => endsWith(name, '_gioenc'))
+    .forEach((name: string) => {
+      const value = globalStorage.getItem(name);
+      if (isString(value) && value.length && value !== 'w3,') {
+        niceTry(() => globalStorage.setItem(name, value));
+      }
+    });
+};
+
 const isSameCookieDomain = (left: string, right: string) =>
   left.replace(/^\./, '') === right.replace(/^\./, '');
 
@@ -194,6 +206,9 @@ export const initGlobalStorage = (vdsConfig: any) => {
     if (possibleSpecialDomain && testCookie(possibleSpecialDomain)) {
       domainConverter(globalStorage, possibleSpecialDomain, projectId);
     }
+  }
+  if (projectId) {
+    migrateEncryptedValues(globalStorage, projectId);
   }
   return globalStorage;
 };
