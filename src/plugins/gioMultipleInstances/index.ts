@@ -16,7 +16,6 @@ const GLOBAL_CONFIG_KEYS = [
   'compress',
   'cookieDomain',
   'forceLogin',
-  'idMapping',
   'performance',
   'penetrateHybrid',
   'gtouchHost',
@@ -155,11 +154,16 @@ export default class GioMultipleInstances {
             ...newEvent.attributes,
             ...event.attributes
           };
-          originFunction.call(this, newEvent);
+          // 冻结身份只属于原目标；复制目标使用自己的上下文。最终字段过滤归派发层。
+          originFunction.call(
+            this,
+            newEvent,
+            event.trackingId === trackingId ? args[1] : undefined
+          );
         });
       } else {
         // 其他事件直接发给指定调用实例
-        originFunction.call(this, event);
+        originFunction.call(this, event, args[1]);
       }
     };
   };

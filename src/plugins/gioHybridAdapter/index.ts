@@ -30,12 +30,9 @@ import {
   GIOHYBRIDNODEINFO
 } from 'gio-web-nodes-parser/build/typings';
 import Page from '@/core/dataStore/page';
-import { addListener } from '@/utils/tools';
+import { addListener, consoleText } from '@/utils/tools';
 import { OriginOptions } from '@/types/internal/dataStore';
-import {
-  normalizeHybridAttributes,
-  prepareNativePayload
-} from './payload';
+import { normalizeHybridAttributes, prepareNativePayload } from './payload';
 
 /** Native 上报协议可接收的 Web 事件类型。未列出的事件只保留 Web SDK 原有发送流程。 */
 const SUPPORT_EVENT_TYPES = [
@@ -51,6 +48,33 @@ const PENETRATED_EVENT_TYPES = ['LOGIN_USER_ATTRIBUTES'];
 const BRIDGE_READY_TIMEOUT = 5_000;
 /** Bridge 未就绪时检查 `dispatchEvent` 的间隔。 */
 const BRIDGE_READY_POLL_INTERVAL = 100;
+/** AB 分流读取 Native 身份的 JS 兜底时限，略长于 iOS Bridge 内部时限。 */
+const NATIVE_IDENTITY_TIMEOUT = 1_000;
+
+export interface NativeIdentity {
+  deviceId: string;
+  userId: string;
+  userKey: string;
+  isNewDevice: boolean;
+  /** App 当前采集开关；未传时兼容旧版 Bridge，交由 Web 配置决定。 */
+  dataCollectionEnabled?: boolean;
+}
+
+/** App 关闭采集时可以只返回开关，无需创建或暴露设备身份。 */
+export interface NativeDataCollectionDisabled {
+  dataCollectionEnabled: false;
+}
+
+export type NativeIdentityResult =
+  | NativeIdentity
+  | NativeDataCollectionDisabled;
+
+type NativeIdentityFailureReason =
+  | 'bridge missing'
+  | 'getNativeIdentity missing'
+  | 'getNativeIdentity timeout'
+  | 'getNativeIdentity exception'
+  | 'getNativeIdentity invalid response';
 
 /**
  * 页面加载状态或文档结构变化时触发 Native 圈选数据刷新。事件名使用浏览器事件 API
@@ -69,6 +93,7 @@ const WINDOW_EVENT = [
 ];
 
 type PendingHybridEvent = {
+  binding: HybridBridgeBinding;
   /** Uploader 当前持有的事件副本；完成或失败时必须交还给 Uploader。 */
   eventData: any;
   /** 已完成字段规范化、可直接 JSON 序列化给 Native 的事件副本。 */
@@ -82,21 +107,44 @@ type PendingHybridEvent = {
 /** Native 发送尝试的状态：成功、Bridge 尚不可用或调用异常。 */
 type DispatchResult = 'sent' | 'unavailable' | 'failed';
 
+interface HybridConfiguration {
+  projectId: string;
+  dataSourceId?: string;
+  packageName?: string;
+  appPackage?: string;
+}
+
+/** 原生主体必须与同一代实例绑定及配置快照一起消费。 */
+export interface HybridBindingSnapshot {
+  readonly trackingId: string;
+  readonly generation: number;
+  readonly config: Readonly<HybridConfiguration>;
+}
+
+interface HybridBridgeBinding {
+  readonly bridge: IGrowingWebViewJavascriptBridge;
+  readonly config: Readonly<HybridConfiguration>;
+  readonly generation: number;
+  readonly trackingId?: string;
+}
+
 export default class GioHybridAdapter {
   public pluginVersion: string;
   /** 是否向 Native 同步 Web 的 userId 与 userKey；默认开启。 */
   private penetrateHybrid = true;
   /** 标记身份穿透策略是否已经从第一个实例配置中确定。 */
   private penetrateHybridInitialized = false;
-  /** 当前页面是否存在包含有效配置的 Hybrid Bridge。 */
-  private hasHybridBridge: boolean;
-  /** Native 容器提供的项目和应用标识，用于匹配 Web 实例。 */
-  public hybridConfig: {
-    projectId: string;
-    dataSourceId: string;
-    packageName?: string;
-    appPackage?: string;
-  };
+  private binding?: HybridBridgeBinding;
+  private bindingGeneration = 0;
+  private refreshingBinding = false;
+  private initializedInstances: Array<{
+    trackingId: string;
+    options: { projectId: string; packageName?: string };
+  }> = [];
+  /** 配置只来自当前绑定的不可变快照，不暴露 Bridge 的可变 configuration。 */
+  public get hybridConfig() {
+    return this._refreshBinding()?.config;
+  }
   /**
    * 插件系统在 Uploader 发送前执行的钩子。存在有效 Bridge 配置时赋值；事件能否实际
    * 发送由 `dispatchEvent` 的运行时状态决定。
@@ -112,6 +160,11 @@ export default class GioHybridAdapter {
   private pendingHybridEvents: PendingHybridEvent[] = [];
   /** 驱动 pendingHybridEvents 重试检查的唯一共享定时器。 */
   private bridgeReadyPollTimer?: any;
+  /** 同一页面内每种 AB 身份读取失败最多警告一次，避免频繁 getABTest 刷屏。 */
+  private nativeIdentityWarnings: Record<string, boolean> = {};
+  /** Native 身份等待与事件发送同属插件生命周期，销毁时立即结束并清理兜底计时器。 */
+  private pendingNativeIdentities: Array<() => void> = [];
+  private destroyed = false;
   /** 监听页面 DOM 改动并通知 Native 的观察器。 */
   private mutationObserver?: MutationObserver;
   /** document.body 尚不可用时，延后建立 MutationObserver 的一次性监听器。 */
@@ -134,12 +187,6 @@ export default class GioHybridAdapter {
     vdsConfig: OriginOptions;
   }) => {
     this.onOptionsInit(trackingId, vdsConfig);
-    if (
-      this.growingIO.useHybridInherit &&
-      window.GrowingWebViewJavascriptBridge
-    ) {
-      this._addDomChangeListener();
-    }
   };
 
   constructor(public growingIO: GrowingIOType) {
@@ -156,57 +203,148 @@ export default class GioHybridAdapter {
    * 由 Native 单发，Uploader 不再向 Web Collector 发送相同事件。
    */
   onOptionsInit = (trackingId: string, vdsConfig: OriginOptions) => {
-    const { emitter, plugins } = this.growingIO;
+    if (this.destroyed) return;
     if (!this.penetrateHybridInitialized) {
       this.penetrateHybridInitialized = true;
       if (isBoolean(vdsConfig.penetrateHybrid)) {
         this.penetrateHybrid = vdsConfig.penetrateHybrid;
       }
     }
-    const bridgeInitialized = this._initHybridBridge();
-    if (bridgeInitialized) {
-      // 发送前钩子负责把可发送的事件规范化并转交给 Native。
-      this.onSendBefore = this.sendBeforeListener;
-      // 同一 Bridge 只关联一个 Web 实例，避免同一事件被多个实例发送到 Native。
-      if (!this.growingIO.useHybridInherit) {
-        const configPackageName =
-          this.hybridConfig.packageName ?? this.hybridConfig.appPackage;
-        // 多实例必须同时匹配项目和应用包名，才能确定事件所属实例。
-        if (plugins.gioMultipleInstances) {
-          if (
-            this.hybridConfig.projectId === vdsConfig.projectId &&
-            configPackageName === vdsConfig.packageName
-          ) {
-            this.growingIO.useHybridInherit = trackingId;
-            this.growingIO.dataStore.updateVdsConfig(trackingId, {
-              hybridLink: true
-            });
-          }
-        } else if (vdsConfig.packageName) {
-          // 单实例配置了应用包名时，也要求项目和包名同时匹配。
-          if (
-            this.hybridConfig.projectId === vdsConfig.projectId &&
-            configPackageName === vdsConfig.packageName
-          ) {
-            this.growingIO.useHybridInherit = trackingId;
-            this.growingIO.dataStore.updateVdsConfig(trackingId, {
-              hybridLink: true
-            });
-          }
-        } else if (this.hybridConfig.projectId === vdsConfig.projectId) {
-          // 未配置应用包名时，项目 ID 是唯一可用的匹配条件。
-          this.growingIO.useHybridInherit = trackingId;
-          this.growingIO.dataStore.updateVdsConfig(trackingId, {
-            hybridLink: true
-          });
+    const options = {
+      projectId: vdsConfig.projectId,
+      packageName: vdsConfig.packageName
+    };
+    const existing = this.initializedInstances.filter(
+      (instance) => instance.trackingId === trackingId
+    )[0];
+    if (existing) existing.options = options;
+    else this.initializedInstances.push({ trackingId, options });
+    // 保留配置/dispatchEvent 分阶段注入；发送时也会检测 Bridge 是否已就绪或换代。
+    this.onSendBefore = this.sendBeforeListener;
+    this._refreshBinding();
+  };
+
+  getHybridBinding = (trackingId?: string): HybridBindingSnapshot | null => {
+    const binding = this._refreshBinding();
+    return binding?.trackingId &&
+      (!trackingId || trackingId === binding.trackingId)
+      ? Object.freeze({
+          trackingId: binding.trackingId,
+          generation: binding.generation,
+          config: binding.config
+        })
+      : null;
+  };
+
+  private _matchTrackingId = (config: HybridConfiguration) => {
+    const packageName = config.packageName ?? config.appPackage;
+    for (const { trackingId, options } of this.initializedInstances) {
+      if (
+        config.projectId === options.projectId &&
+        (!(
+          this.growingIO.plugins.gioMultipleInstances || options.packageName
+        ) ||
+          packageName === options.packageName)
+      )
+        return trackingId;
+    }
+    return undefined;
+  };
+
+  private _refreshBinding = (): HybridBridgeBinding | undefined => {
+    if (this.destroyed || this.refreshingBinding) return this.binding;
+    let bridge: IGrowingWebViewJavascriptBridge;
+    let config: HybridConfiguration;
+    try {
+      bridge = window.GrowingWebViewJavascriptBridge;
+      if (bridge) {
+        let raw: any = bridge.configuration;
+        if (!raw) {
+          raw = bridge.getConfiguration?.();
+          if (raw)
+            bridge.configuration =
+              typeof raw === 'string' ? JSON.parse(raw) : raw;
+        }
+        if (typeof raw === 'string') raw = JSON.parse(raw);
+        if (raw && typeof raw.projectId === 'string' && raw.projectId) {
+          config = {
+            projectId: raw.projectId,
+            dataSourceId:
+              typeof (raw.dataSourceId ?? raw.datasourceId) === 'string'
+                ? (raw.dataSourceId ?? raw.datasourceId)
+                : undefined,
+            packageName:
+              typeof raw.packageName === 'string' ? raw.packageName : undefined,
+            appPackage:
+              typeof raw.appPackage === 'string' ? raw.appPackage : undefined
+          };
         }
       }
+    } catch (error) {
+      this._logBridgeError('initialize', error);
     }
-    // 仅打通实例的身份状态需要同步到 Native；同一函数引用用于后续解除监听。
-    if (this.growingIO.useHybridInherit && !this.userChangeListenersAdded) {
-      emitter?.on(EMIT_MSG.SET_USERID, this.onSetUserId);
-      emitter?.on(EMIT_MSG.SET_USERKEY, this.onSetUserKey);
-      this.userChangeListenersAdded = true;
+    const trackingId = config ? this._matchTrackingId(config) : undefined;
+    const previous = this.binding;
+    if (
+      previous?.bridge === bridge &&
+      previous?.trackingId === trackingId &&
+      JSON.stringify(previous?.config) === JSON.stringify(config)
+    )
+      return previous;
+    this.refreshingBinding = true;
+    try {
+      const oldNativeIdentities = this.pendingNativeIdentities.slice();
+      const oldHybridEvents = this.pendingHybridEvents.slice();
+      this.bindingGeneration += 1;
+      this.binding = config
+        ? {
+            bridge,
+            config: Object.freeze(config),
+            trackingId,
+            generation: this.bindingGeneration
+          }
+        : undefined;
+      this.growingIO.useHybridInherit = trackingId || '';
+      if (previous?.trackingId && previous.trackingId !== trackingId) {
+        this.growingIO.dataStore.updateVdsConfig(previous.trackingId, {
+          hybridLink: false
+        });
+      }
+      this._removeDomChangeListener();
+      this._removeInstalledGetDomTree();
+      if (this.userChangeListenersAdded) {
+        this.growingIO.emitter.off(EMIT_MSG.SET_USERID, this.onSetUserId);
+        this.growingIO.emitter.off(EMIT_MSG.SET_USERKEY, this.onSetUserKey);
+        this.userChangeListenersAdded = false;
+      }
+      const current = this.binding;
+      if (current) this._installGetDomTree(current);
+      if (trackingId) {
+        this.growingIO.dataStore.updateVdsConfig(trackingId, {
+          hybridLink: true
+        });
+        this.growingIO.emitter.on(EMIT_MSG.SET_USERID, this.onSetUserId);
+        this.growingIO.emitter.on(EMIT_MSG.SET_USERKEY, this.onSetUserKey);
+        this.userChangeListenersAdded = true;
+        this._addDomChangeListener();
+      }
+      if (this.bridgeReadyPollTimer) {
+        window.clearTimeout(this.bridgeReadyPollTimer);
+        this.bridgeReadyPollTimer = undefined;
+      }
+      // 新绑定先完整安装；取消只消费换代前快照，保留业务回调重入创建的新代工作。
+      this.growingIO.emitter.emit(EMIT_MSG.HYBRID_BINDING_UPDATE, {
+        previousTrackingId: previous?.trackingId,
+        trackingId,
+        generation: this.bindingGeneration
+      });
+      oldNativeIdentities.forEach((cancel) => cancel());
+      oldHybridEvents.forEach((pending) =>
+        this._failPendingHybridEvent(pending, 'Hybrid binding changed', false)
+      );
+      return current;
+    } finally {
+      this.refreshingBinding = false;
     }
   };
 
@@ -220,22 +358,28 @@ export default class GioHybridAdapter {
     userKey,
     trackingId
   }: any) => {
+    const binding = this._refreshBinding();
     if (
-      trackingId !== this.growingIO.useHybridInherit ||
+      !binding?.trackingId ||
+      trackingId !== binding.trackingId ||
       !this.penetrateHybrid
     ) {
       return;
     }
     if (!newUserId && oldUserId) {
       if (userKey) {
-        this._clearNativeUserIdAndUserKey();
+        this._clearNativeUserIdAndUserKey(binding);
       } else {
-        this._clearNativeUserId();
+        this._clearNativeUserId(binding);
       }
     } else if (userKey) {
-      this._setNativeUserIdAndUserKey(toString(newUserId), toString(userKey));
+      this._setNativeUserIdAndUserKey(
+        toString(newUserId),
+        toString(userKey),
+        binding
+      );
     } else {
-      this._setNativeUserId(toString(newUserId));
+      this._setNativeUserId(toString(newUserId), binding);
     }
   };
 
@@ -249,16 +393,22 @@ export default class GioHybridAdapter {
     userId,
     trackingId
   }: any) => {
+    const binding = this._refreshBinding();
     if (
-      trackingId !== this.growingIO.useHybridInherit ||
+      !binding?.trackingId ||
+      trackingId !== binding.trackingId ||
       !this.penetrateHybrid
     ) {
       return;
     }
     if (!newUserKey && oldUserKey) {
-      this._clearNativeUserIdAndUserKey();
+      this._clearNativeUserIdAndUserKey(binding);
     } else {
-      this._setNativeUserIdAndUserKey(toString(userId), toString(newUserKey));
+      this._setNativeUserIdAndUserKey(
+        toString(userId),
+        toString(newUserKey),
+        binding
+      );
     }
   };
 
@@ -268,59 +418,30 @@ export default class GioHybridAdapter {
    * Bridge 可以直接提供对象配置，也可以通过 `getConfiguration()` 返回 JSON 文本。配置
    * 存在后即可安装 `getDomTree`；该回调不依赖事件发送方法 `dispatchEvent`。
    */
-  private _initHybridBridge = () => {
-    // 普通 Web 页面没有 Bridge，不启用 Hybrid 行为。
-    this.hasHybridBridge = !!window.GrowingWebViewJavascriptBridge;
-    if (this.hasHybridBridge) {
-      try {
-        const bridge = window.GrowingWebViewJavascriptBridge;
-        // Bridge 配置可能是对象，也可能由 getConfiguration() 返回 JSON 文本。
-        if (!bridge.configuration) {
-          const configuration = bridge.getConfiguration?.();
-          bridge.configuration =
-            typeof configuration === 'string'
-              ? JSON.parse(configuration)
-              : configuration;
+  private _installGetDomTree = (binding: HybridBridgeBinding) => {
+    const self = this;
+    this.installedBridge = binding.bridge;
+    this.installedGetDomTree = function (...args) {
+      if (self._refreshBinding() !== binding) return;
+      if (args.length >= 4) {
+        try {
+          return self._getDomTree.apply(this, args);
+        } catch (error) {
+          self._logBridgeError('getDomTree', error, {
+            argumentCount: args.length,
+            webviewLeft: args[0],
+            webviewTop: args[1],
+            webviewWidth: args[2],
+            webviewHeight: args[3],
+            webviewZLevel: args[4]
+          });
+          throw error;
         }
-        // 缺少配置无法关联 Web 实例，不注册上报或圈选能力。
-        if (!bridge.configuration) {
-          this.hasHybridBridge = false;
-          return false;
-        }
-        // 配置用于后续每个 Web 实例的项目和包名匹配。
-        this.hybridConfig = bridge.configuration;
-        // Native 调用该函数时接收 SDK 圈选协议对象，而不是容器自身的节点数据。
-        const self = this;
-        if (this.installedBridge && this.installedBridge !== bridge) {
-          this._removeInstalledGetDomTree();
-        }
-        this.installedBridge = bridge;
-        this.installedGetDomTree = function (...args) {
-          if (args.length >= 4) {
-            try {
-              return self._getDomTree.apply(this, args);
-            } catch (error) {
-              self._logBridgeError('getDomTree', error, {
-                argumentCount: args.length,
-                webviewLeft: args[0],
-                webviewTop: args[1],
-                webviewWidth: args[2],
-                webviewHeight: args[3],
-                webviewZLevel: args[4]
-              });
-              throw error;
-            }
-          }
-        };
-        bridge.getDomTree = this.installedGetDomTree;
-        return true;
-      } catch (error) {
-        this.hasHybridBridge = false;
-        this._logBridgeError('initialize', error);
-        return false;
       }
-    }
-    return false;
+    };
+    this._callBridge('install getDomTree', () => {
+      binding.bridge.getDomTree = this.installedGetDomTree;
+    });
   };
 
   /**
@@ -330,12 +451,10 @@ export default class GioHybridAdapter {
    * 接收同一事件。未打通时，仅主实例且非多实例场景可向 Native 发送辅助事件，Uploader
    * 仍按原流程发送 Web 请求。
    */
-  sendBeforeListener = (args: {
-    requestData: EVENT;
-    trackingId: string;
-  }) => {
+  sendBeforeListener = (args: { requestData: EVENT; trackingId: string }) => {
     const { requestData, trackingId } = args;
-    if (!this.hasHybridBridge || !this._shouldForwardToNative(trackingId)) {
+    const binding = this._refreshBinding();
+    if (!binding || !this._shouldForwardToNative(trackingId)) {
       return;
     }
     let nativeData: any;
@@ -346,7 +465,12 @@ export default class GioHybridAdapter {
         trackingId,
         requestId: (requestData as any).requestId
       });
-      this._deferHybridEvent(requestData, undefined, 'normalize native event');
+      this._deferHybridEvent(
+        requestData,
+        undefined,
+        binding,
+        'normalize native event'
+      );
       return;
     }
     if (!includes(SUPPORT_EVENT_TYPES, nativeData.eventType)) {
@@ -359,7 +483,7 @@ export default class GioHybridAdapter {
     } else if (!this.penetrateHybrid) {
       unset(nativeData, ['userId', 'userKey', 'cs1']);
     }
-    this._dispatchOrDeferEvent(requestData, nativeData);
+    this._dispatchOrDeferEvent(requestData, nativeData, binding);
   };
 
   private _shouldForwardToNative = (trackingId: string) =>
@@ -368,37 +492,192 @@ export default class GioHybridAdapter {
       : trackingId === this.growingIO.trackingId &&
         !this.growingIO.plugins.gioMultipleInstances;
 
+  /**
+   * 读取本页最新的 Native AB 身份。iOS 的 Promise/对象与 Android 的 JSON 字符串都由
+   * 同一个 GrowingWebViewJavascriptBridge 统一在这里归一化。失败只返回 null，ABTest 据此无感回退 Web 身份。
+   */
+  getNativeIdentity = (
+    trackingId?: string,
+    generation?: number
+  ): Promise<NativeIdentityResult | null> => {
+    if (this.destroyed) return Promise.resolve(null);
+    const binding = this._refreshBinding();
+    if (
+      !binding?.trackingId ||
+      (trackingId && trackingId !== binding.trackingId) ||
+      (generation !== undefined && generation !== binding.generation)
+    )
+      return Promise.resolve(null);
+    let bridge: any;
+    let getNativeIdentity: any;
+    try {
+      bridge = binding.bridge;
+      if (!bridge) {
+        this._warnNativeIdentityOnce('bridge missing');
+        return Promise.resolve(null);
+      }
+      if (!isFunction(bridge.getNativeIdentity)) {
+        this._warnNativeIdentityOnce('getNativeIdentity missing');
+        return Promise.resolve(null);
+      }
+      getNativeIdentity = bridge.getNativeIdentity;
+    } catch (error) {
+      this._warnNativeIdentityOnce('getNativeIdentity exception', error);
+      return Promise.resolve(null);
+    }
+
+    let result: any;
+    try {
+      result = getNativeIdentity.call(bridge);
+    } catch (error) {
+      this._warnNativeIdentityOnce('getNativeIdentity exception', error);
+      return Promise.resolve(null);
+    }
+
+    // Native 方法本身也可能同步触发 SDK 销毁。
+    if (this.destroyed || this._refreshBinding() !== binding) {
+      Promise.resolve(result).catch(() => {});
+      return Promise.resolve(null);
+    }
+
+    return new Promise<NativeIdentityResult | null>((resolve) => {
+      let settled = false;
+      const cancel = () => complete(null);
+      const complete = (value: NativeIdentityResult | null) => {
+        if (!settled) {
+          settled = true;
+          window.clearTimeout(timeout);
+          const index = this.pendingNativeIdentities.indexOf(cancel);
+          if (index >= 0) this.pendingNativeIdentities.splice(index, 1);
+          resolve(value);
+        }
+      };
+      const timeout = window.setTimeout(() => {
+        if (this._refreshBinding() !== binding || settled) return;
+        this._warnNativeIdentityOnce('getNativeIdentity timeout');
+        complete(null);
+      }, NATIVE_IDENTITY_TIMEOUT);
+      this.pendingNativeIdentities.push(cancel);
+      Promise.resolve(result).then(
+        (value) => {
+          if (settled) return;
+          if (this._refreshBinding() !== binding || settled) {
+            complete(null);
+            return;
+          }
+          let identity: NativeIdentityResult | null;
+          try {
+            // Native 返回的对象也可能在字段读取时抛错，必须结束身份等待。
+            identity = this._normalizeNativeIdentity(value);
+          } catch (_error) {
+            identity = null;
+          }
+          if (!identity) {
+            this._warnNativeIdentityOnce('getNativeIdentity invalid response');
+          }
+          complete(identity);
+        },
+        (error) => {
+          if (settled) return;
+          this._warnNativeIdentityOnce('getNativeIdentity exception', error);
+          complete(null);
+        }
+      );
+    });
+  };
+
+  private _normalizeNativeIdentity = (
+    value: any
+  ): NativeIdentityResult | null => {
+    let payload = value;
+    if (typeof payload === 'string') {
+      try {
+        payload = JSON.parse(payload);
+      } catch (_error) {
+        return null;
+      }
+    }
+    if (!payload || typeof payload !== 'object') {
+      return null;
+    }
+    if (payload.dataCollectionEnabled === false) {
+      // 关闭态本身就足以阻断 AB；App 无需在不采集时额外创建身份。
+      if (
+        typeof payload.deviceId !== 'string' ||
+        !payload.deviceId ||
+        typeof payload.isNewDevice !== 'boolean'
+      ) {
+        return { dataCollectionEnabled: false };
+      }
+    }
+    // deviceId 及 isNewDevice 是 Native 主体完整性的必要条件；用户身份可缺失。
+    if (
+      typeof payload.deviceId !== 'string' ||
+      !payload.deviceId ||
+      typeof payload.isNewDevice !== 'boolean'
+    ) {
+      return null;
+    }
+    return {
+      deviceId: payload.deviceId,
+      userId: typeof payload.userId === 'string' ? payload.userId : '',
+      userKey: typeof payload.userKey === 'string' ? payload.userKey : '',
+      isNewDevice: payload.isNewDevice,
+      ...(typeof payload.dataCollectionEnabled === 'boolean'
+        ? { dataCollectionEnabled: payload.dataCollectionEnabled }
+        : {})
+    };
+  };
+
+  private _warnNativeIdentityOnce = (
+    reason: NativeIdentityFailureReason,
+    error?: unknown
+  ) => {
+    if (this.nativeIdentityWarnings[reason]) {
+      return;
+    }
+    this.nativeIdentityWarnings[reason] = true;
+    consoleText(
+      `Hybrid AB Native 身份读取失败，已回退 Web 身份: ${reason}`,
+      'warn'
+    );
+    this._logBridgeError('getNativeIdentity', error ?? new Error(reason), {
+      reason
+    });
+  };
+
   /** 将事件字段转换为 Native 协议使用的字符串表示；保留为插件的公开实例方法。 */
   processAttributes = normalizeHybridAttributes;
 
   /** 调用 Native 的单 userId 设置接口；Bridge 异常只记录诊断，不影响 Web 身份流程。 */
-  private _setNativeUserId = (userId: string) => {
+  private _setNativeUserId = (userId: string, binding: HybridBridgeBinding) => {
     this._callBridge('setNativeUserId', () =>
-      window.GrowingWebViewJavascriptBridge.setNativeUserId(userId)
+      binding.bridge.setNativeUserId(userId)
     );
   };
 
   /** 调用 Native 的单 userId 清理接口。 */
-  private _clearNativeUserId = () => {
+  private _clearNativeUserId = (binding: HybridBridgeBinding) => {
     this._callBridge('clearNativeUserId', () =>
-      window.GrowingWebViewJavascriptBridge.clearNativeUserId()
+      binding.bridge.clearNativeUserId()
     );
   };
 
   /** 调用 Native 的 userId 与 userKey 联合设置接口。 */
-  private _setNativeUserIdAndUserKey = (userId: string, userKey: string) => {
+  private _setNativeUserIdAndUserKey = (
+    userId: string,
+    userKey: string,
+    binding: HybridBridgeBinding
+  ) => {
     this._callBridge('setNativeUserIdAndUserKey', () =>
-      window.GrowingWebViewJavascriptBridge.setNativeUserIdAndUserKey(
-        userId,
-        userKey
-      )
+      binding.bridge.setNativeUserIdAndUserKey(userId, userKey)
     );
   };
 
   /** 调用 Native 的联合身份清理接口。 */
-  private _clearNativeUserIdAndUserKey = () => {
+  private _clearNativeUserIdAndUserKey = (binding: HybridBridgeBinding) => {
     this._callBridge('clearNativeUserIdAndUserKey', () =>
-      window.GrowingWebViewJavascriptBridge.clearNativeUserIdAndUserKey()
+      binding.bridge.clearNativeUserIdAndUserKey()
     );
   };
 
@@ -406,11 +685,15 @@ export default class GioHybridAdapter {
    * 将事件交给 Native，或在发送方法缺失、调用失败时暂存事件。暂存事件仍属于 Native
    * 单发链路，超时后由 Uploader 的失败重试机制处理，而不改为 Web Collector 发送。
    */
-  private _dispatchOrDeferEvent = (eventData: any, nativeData: any) => {
-    if (this._dispatchEvent(nativeData) === 'sent') {
+  private _dispatchOrDeferEvent = (
+    eventData: any,
+    nativeData: any,
+    binding: HybridBridgeBinding
+  ) => {
+    if (this._dispatchEvent(nativeData, binding) === 'sent') {
       return;
     }
-    this._deferHybridEvent(eventData, nativeData);
+    this._deferHybridEvent(eventData, nativeData, binding);
   };
 
   /**
@@ -419,11 +702,15 @@ export default class GioHybridAdapter {
    * `unavailable` 表示 Bridge 或方法尚未出现，可继续等待；`failed` 表示方法调用或序列化
    * 发生异常，当前事件应立即进入失败处理。
    */
-  private _dispatchEvent = (data: any): DispatchResult => {
+  private _dispatchEvent = (
+    data: any,
+    binding: HybridBridgeBinding
+  ): DispatchResult => {
+    if (this._refreshBinding() !== binding) return 'failed';
     let bridge: IGrowingWebViewJavascriptBridge;
     let dispatchEvent: any;
     try {
-      bridge = window.GrowingWebViewJavascriptBridge;
+      bridge = binding.bridge;
       dispatchEvent = bridge?.dispatchEvent;
     } catch (error) {
       this._logBridgeError('read dispatchEvent', error);
@@ -432,10 +719,12 @@ export default class GioHybridAdapter {
     if (!isFunction(dispatchEvent)) {
       return 'unavailable';
     }
-    return this._callBridge('dispatchEvent', () => {
-      dispatchEvent.call(bridge, JSON.stringify(data));
-      return 'sent' as const;
-    }) ?? 'failed';
+    return (
+      this._callBridge('dispatchEvent', () => {
+        dispatchEvent.call(bridge, JSON.stringify(data));
+        return 'sent' as const;
+      }) ?? 'failed'
+    );
   };
 
   /**
@@ -448,13 +737,16 @@ export default class GioHybridAdapter {
   private _deferHybridEvent = (
     eventData: any,
     nativeData: any,
+    binding: HybridBridgeBinding,
     failureReason?: string
   ) => {
+    if (this.binding !== binding) return;
     if (eventData.__gioHybridPending) {
       return;
     }
     eventData.__gioHybridPending = true;
     const pending: PendingHybridEvent = {
+      binding,
       eventData,
       nativeData,
       failureReason,
@@ -475,11 +767,13 @@ export default class GioHybridAdapter {
     this.bridgeReadyPollTimer = window.setTimeout(() => {
       this.bridgeReadyPollTimer = undefined;
       [...this.pendingHybridEvents].forEach((pending) => {
+        // 前一条 dispatch 的同步回调可能已换桥或销毁插件，取消快照中的后续记录。
+        if (!includes(this.pendingHybridEvents, pending)) return;
         if (pending.failureReason) {
           this._failPendingHybridEvent(pending, pending.failureReason);
           return;
         }
-        const result = this._dispatchEvent(pending.nativeData);
+        const result = this._dispatchEvent(pending.nativeData, pending.binding);
         if (result === 'sent') {
           this._completePendingHybridEvent(pending);
         } else if (result === 'failed') {
@@ -494,6 +788,8 @@ export default class GioHybridAdapter {
 
   /** 移除待发送记录，并通知 Uploader 释放对应的发送槽位。 */
   private _completePendingHybridEvent = (pending: PendingHybridEvent) => {
+    // dispatchEvent 返回前可能已同步取消本记录，不能再次成功结算发送槽位。
+    if (!includes(this.pendingHybridEvents, pending)) return;
     this._removePendingHybridEvent(pending);
     this.growingIO.uploader?.requestSuccessFn?.(pending.eventData);
   };
@@ -501,9 +797,10 @@ export default class GioHybridAdapter {
   /** 移除待发送记录，并将事件交给 Uploader 的既有失败重试链路。 */
   private _failPendingHybridEvent = (
     pending: PendingHybridEvent,
-    reason: string
+    reason: string,
+    retry = true
   ) => {
-    if (!this.pendingHybridEvents.includes(pending)) {
+    if (!includes(this.pendingHybridEvents, pending)) {
       return;
     }
     this._logBridgeError('dispatchEvent', new Error(reason), {
@@ -511,10 +808,12 @@ export default class GioHybridAdapter {
       requestId: pending.eventData.requestId
     });
     this._removePendingHybridEvent(pending);
-    this.growingIO.uploader?.requestFailFn?.(
-      pending.eventData,
-      pending.eventData.requestType
-    );
+    if (retry)
+      this.growingIO.uploader?.requestFailFn?.(
+        pending.eventData,
+        pending.eventData.requestType
+      );
+    else this.growingIO.uploader?.requestFailFn?.(pending.eventData, undefined);
   };
 
   /** 清理待发送事件的超时定时器、数组记录和 Uploader 占用标记。 */
@@ -535,6 +834,8 @@ export default class GioHybridAdapter {
    */
   private _removeInstalledGetDomTree = () => {
     const { installedBridge, installedGetDomTree } = this;
+    this.installedBridge = undefined;
+    this.installedGetDomTree = undefined;
     if (
       !installedBridge ||
       !installedGetDomTree ||
@@ -554,8 +855,6 @@ export default class GioHybridAdapter {
         this._logBridgeError('clear getDomTree', error);
       }
     }
-    this.installedBridge = undefined;
-    this.installedGetDomTree = undefined;
   };
 
   /** 执行可能抛出异常的 Bridge 调用，并将同步异常转化为 undefined。 */
@@ -648,9 +947,12 @@ export default class GioHybridAdapter {
         if (type === 'beforeunload') {
           this.mutationObserver?.disconnect();
         }
-        this._callBridge('onDomChanged', () =>
-          window.GrowingWebViewJavascriptBridge?.onDomChanged?.()
-        );
+        this._callBridge('onDomChanged', () => {
+          const binding = this._refreshBinding();
+          const onDomChanged = binding?.bridge.onDomChanged;
+          if (typeof onDomChanged === 'function')
+            onDomChanged.call(binding.bridge);
+        });
       };
     };
     this.mutationObserver = new MutationObserver(listener('mutation'));
@@ -681,6 +983,47 @@ export default class GioHybridAdapter {
    * 删除其他模块后来安装的回调。
    */
   destroy = () => {
+    if (this.destroyed) return;
+    const previous = this.binding;
+    this.destroyed = true;
+    this.binding = undefined;
+    this.bindingGeneration += 1;
+    this.growingIO.useHybridInherit = '';
+    if (previous?.trackingId)
+      this.growingIO.dataStore.updateVdsConfig(previous.trackingId, {
+        hybridLink: false
+      });
+    this.initializedInstances = [];
+    this._removeDomChangeListener();
+    if (this.userChangeListenersAdded) {
+      this.growingIO.emitter?.off(EMIT_MSG.SET_USERID, this.onSetUserId);
+      this.growingIO.emitter?.off(EMIT_MSG.SET_USERKEY, this.onSetUserKey);
+      this.userChangeListenersAdded = false;
+    }
+    if (this.bridgeReadyPollTimer) {
+      window.clearTimeout(this.bridgeReadyPollTimer);
+      this.bridgeReadyPollTimer = undefined;
+    }
+    this._removeInstalledGetDomTree();
+    this.growingIO.emitter?.off(
+      EMIT_MSG.OPTION_INITIALIZED,
+      this.onOptionInitialized
+    );
+    this.onSendBefore = undefined;
+    if (previous)
+      this.growingIO.emitter.emit(EMIT_MSG.HYBRID_BINDING_UPDATE, {
+        previousTrackingId: previous.trackingId,
+        generation: this.bindingGeneration
+      });
+    this.pendingNativeIdentities.slice().forEach((cancel) => cancel());
+    this.pendingHybridEvents
+      .slice()
+      .forEach((pending) =>
+        this._failPendingHybridEvent(pending, 'Hybrid adapter destroyed', false)
+      );
+  };
+
+  private _removeDomChangeListener = () => {
     this.mutationObserver?.disconnect();
     this.mutationObserver = undefined;
     this.domChangeListeners.forEach(({ target, type, handler }) =>
@@ -695,23 +1038,5 @@ export default class GioHybridAdapter {
       );
       this.bodyReadyListener = undefined;
     }
-    if (this.userChangeListenersAdded) {
-      this.growingIO.emitter?.off(EMIT_MSG.SET_USERID, this.onSetUserId);
-      this.growingIO.emitter?.off(EMIT_MSG.SET_USERKEY, this.onSetUserKey);
-      this.userChangeListenersAdded = false;
-    }
-    [...this.pendingHybridEvents].forEach((pending) =>
-      this._failPendingHybridEvent(pending, 'Hybrid adapter destroyed')
-    );
-    if (this.bridgeReadyPollTimer) {
-      window.clearTimeout(this.bridgeReadyPollTimer);
-      this.bridgeReadyPollTimer = undefined;
-    }
-    this._removeInstalledGetDomTree();
-    this.growingIO.emitter?.off(
-      EMIT_MSG.OPTION_INITIALIZED,
-      this.onOptionInitialized
-    );
-    this.onSendBefore = undefined;
   };
 }

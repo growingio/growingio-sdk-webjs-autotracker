@@ -107,7 +107,11 @@ const errorParse = (errorString: string) => {
   find(stacks, (v) => {
     if (v && typeof v === 'string') {
       const matcher = v.match(/at (.*?) \((.*):(\d{1,}):(\d{1,})\)/);
-      if (isArray(matcher) && !functionName && matcher[1]) {
+      if (
+        isArray(matcher) &&
+        functionName === 'Unknown function' &&
+        matcher[1]
+      ) {
         functionName = matcher[1];
         return matcher.length > 0;
       }

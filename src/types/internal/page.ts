@@ -30,6 +30,9 @@ export default interface PageType {
   /** 解析页面信息 */
   parsePage: () => void;
 
+  /** 页面接口调用前补解析已变化的地址，不重置已解析页面的进入时间 */
+  syncPageIfLocationChanged: () => void;
+
   /**
    * 获取来源页面
    * @param trackingId 跟踪ID

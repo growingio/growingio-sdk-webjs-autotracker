@@ -40,6 +40,9 @@ export interface UserStoreType {
    */
   setSessionId: (trackingId: string, sId: string) => void;
 
+  /** 当前 session 是否是 SDK 生成设备的首个 session；不会创建或续期 session。 */
+  isFirstDeviceSession: (trackingId: string, sessionId: string) => boolean;
+
   /**
    * 获取userId
    * @param trackingId 跟踪ID

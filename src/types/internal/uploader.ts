@@ -63,9 +63,8 @@ export interface UploaderType {
   
   /** 
    * 生成请求地址
-   * @param specifiedURL 指定URL（可选）
-   * @param specifiedAI 指定AI（可选）
+   * @param trackingId 实例 trackingId，用于读取该实例的 serverUrl 与 projectId
    * @returns 请求地址
    */
-  generateURL: (specifiedURL?: string, specifiedAI?: string) => string;
+  generateURL: (trackingId: string) => string;
 }

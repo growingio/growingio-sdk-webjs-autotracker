@@ -1,5 +1,6 @@
 export default {
   GIOID_UPDATE: 'GIOID_UPDATE', // gioId变更事件
+  HYBRID_BINDING_UPDATE: 'HYBRID_BINDING_UPDATE', // Native桥或配置换代，取消旧归属工作
   ON_COMMIT_REQUEST: 'ON_COMMIT_REQUEST', // 事件提交队列
   ON_COMPOSE_AFTER: 'ON_COMPOSE_AFTER', // 插件生命周期：构建事件后
   ON_COMPOSE_BEFORE: 'ON_COMPOSE_BEFORE', // 插件生命周期：构建事件前

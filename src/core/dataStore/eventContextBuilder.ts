@@ -1,7 +1,8 @@
 import { GrowingIOType } from '@/types/internal/growingIO';
-import { forEach, includes, isEmpty, unset } from '@/utils/glodash';
+import { forEach, includes, isEmpty } from '@/utils/glodash';
 import { getDynamicAttributes, limitObject, niceTry } from '@/utils/tools';
 import UserAgentManager from '@/core/userAgentManager';
+import { finalizeEventContext, getEmbeddedIgnoreFields } from './eventContext';
 
 class EventContextBuilder {
   public minpExtraParams: any;
@@ -19,6 +20,7 @@ class EventContextBuilder {
       this.growingIO;
     const { path, query, title, getReferralPage } = dataStore.currentPage;
     const trackerVds = dataStore.getTrackerVds(trackingId);
+    const embeddedIgnoreFields = getEmbeddedIgnoreFields(trackerVds);
     const lpv = niceTry(() => dataStore.lastPageEvent[trackingId]) ?? {};
     // 事件主要内容组装
     let context: any = {
@@ -26,7 +28,8 @@ class EventContextBuilder {
       dataSourceId: trackerVds.dataSourceId,
       deviceId: userStore.getUid(),
       domain:
-        trackingId === useEmbeddedInherit
+        trackingId === useEmbeddedInherit &&
+        !includes(embeddedIgnoreFields, 'domain')
           ? trackerVds.appId
           : window.location.host,
       language: navigator.language,
@@ -76,34 +79,17 @@ class EventContextBuilder {
         }
       }
     }
-    // 过滤忽略字段（支持顶层ignoreFields通用配置和embeddedAdapter.ignoreFields小程序打通配置）
-    const generalIgnoreFields = trackerVds?.ignoreFields ?? [];
-    const embeddedIgnoreFields = trackerVds?.embeddedAdapter?.ignoreFields ?? [];
-    // 合并两种配置并去重
-    const ignoreFields = Array.from(new Set([...generalIgnoreFields, ...embeddedIgnoreFields]));
-    if (!isEmpty(ignoreFields)) {
-      (ignoreFields as string[]).forEach((o) => {
-        unset(context, o);
-      });
-    }
-
-    /**
-     * 以下字段可以忽略打通时的强制赋值(忽略字段时，原先web产生的context中有值的取原context值，没有则该字段在事件中为空会被舍弃)
-     * ['domain', 'platform', // 就告诉客户只能传这2个，剩下的虽然有能力也忽略，但是尽量不告诉，可以在小程序不加就完了
-     * 注意dataSourceId慎用，单独搞web项目的时候会导致web只有page没有visit，跳出率计算有问题
-     * 'dataSourceId', 'appChannel', 'deviceBrand', 'deviceType', 'language', 'networkState', 'deviceModel'
-     *'operatingSystem', 'platformVersion', 'screenHeight', 'screenWidth']
-     */
-    // 小程序打通时，优先使用打通的字段
+    // 允许排除继承的维度保留 Web 值；关键打通字段已从忽略列表中过滤。
+    // 小程序打通时，优先使用打通的字段；strict 仅约束打通环境和 Web 用户存储。
     if (
       useEmbeddedInherit &&
       trackingId === useEmbeddedInherit &&
       !isEmpty(this.minpExtraParams)
     ) {
       forEach({ ...context, ...this.minpExtraParams }, (_, k) => {
-        if (includes(trackerVds.embeddedIgnore, k)) {
+        if (includes(embeddedIgnoreFields, k)) {
           // 存在打通忽略的字段时，不进行覆盖，取原值（但是domain要特殊处理）。原值在vds.originValues中，只在小程序打通插件中会塞值
-          context[k] = trackerVds?.originValues[k] ?? context[k];
+          context[k] = trackerVds?.originValues?.[k] ?? context[k];
           if (k === 'domain') {
             context[k] = window.location.host;
           }
@@ -114,7 +100,7 @@ class EventContextBuilder {
       });
     }
     context.trackingId = trackingId;
-    return context;
+    return finalizeEventContext(context, trackerVds);
   };
 }
 

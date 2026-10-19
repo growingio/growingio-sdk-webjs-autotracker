@@ -11,6 +11,11 @@ export type EVENT_TYPES =
   | 'VIEW_CLICK'             // 视图点击事件
   | 'VIEW_CHANGE';           // 视图变更事件
 
+/** 显式传给派发层的身份快照，不进入事件负载。 */
+export type EventIdentitySnapshot = Readonly<
+  Pick<EVENT, 'deviceId' | 'userId' | 'userKey'>
+>;
+
 /**
  * 事件接口
  * 

@@ -13,7 +13,7 @@ export interface ABTestOptions {
   /** 分流服务请求地址 */
   abServerUrl?: string | Record<string, string>;
   
-  /** 请求间隔时长（毫秒） */
+  /** 成功分流结果的复用间隔（分钟） */
   requestInterval?: number;
   
   /** 请求超时时长（毫秒） */

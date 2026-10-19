@@ -17,9 +17,9 @@ class Uploader implements UploaderType {
   // 请求中的请求数
   public requestingNum: number;
   // 在途请求的清理函数。销毁 SDK 时需主动取消，避免旧回调访问已释放的配置。
-  private activeRequestCleanups: Set<() => void>;
+  private activeRequestCleanups: Array<() => void>;
   // 失败重试的延迟任务同样属于 uploader 生命周期。
-  private retryTimers: Set<any>;
+  private retryTimers: any[];
   private destroyed: boolean;
   constructor(public growingIO: GrowingIOType) {
     // 主实例的积压缓存队列
@@ -30,17 +30,14 @@ class Uploader implements UploaderType {
     this.requestLimit = 10;
     // 正在请求中个数计数
     this.requestingNum = 0;
-    this.activeRequestCleanups = new Set();
-    this.retryTimers = new Set();
+    this.activeRequestCleanups = [];
+    this.retryTimers = [];
     this.destroyed = false;
     // 主实例的请求监听
-    this.growingIO.emitter.on(
-      EMIT_MSG.OPTION_INITIALIZED,
-      ({ trackingId }) => {
-        this.destroyed = false;
-        this.hoardingQueue[trackingId] = [];
-      }
-    );
+    this.growingIO.emitter.on(EMIT_MSG.OPTION_INITIALIZED, ({ trackingId }) => {
+      this.destroyed = false;
+      this.hoardingQueue[trackingId] = [];
+    });
     this.growingIO.emitter.on(
       EMIT_MSG.ON_SEND_BEFORE,
       ({ requestData, trackingId }: any) => {
@@ -324,7 +321,9 @@ class Uploader implements UploaderType {
       const { requestTimeout } = this.growingIO.dataStore.getTrackerVds(
         eventData.trackingId
       );
-      const src = `${requestURL}&data=${requestData}`;
+      // JSON 事件本身可包含 query、属性等 `&`/`=` 字符；必须作为一个参数编码，
+      // 否则浏览器会把它们解释成新的 query 参数，服务端只能收到被截断的 payload。
+      const src = `${requestURL}&data=${encodeURIComponent(requestData)}`;
       img = document.createElement('img');
       img.width = 1;
       img.height = 1;
@@ -377,17 +376,21 @@ class Uploader implements UploaderType {
 
   /** Registers cleanup for a request that can complete after SDK destruction. */
   private registerActiveRequest = (cleanup: () => void) => {
-    this.activeRequestCleanups.add(cleanup);
-    return () => this.activeRequestCleanups.delete(cleanup);
+    this.activeRequestCleanups.push(cleanup);
+    return () => {
+      this.activeRequestCleanups = this.activeRequestCleanups.filter(
+        (active) => active !== cleanup
+      );
+    };
   };
 
   // 停止所有异步上报，防止销毁后的回调读取已清理的 vdsConfig。
   destroy = () => {
     this.destroyed = true;
-    this.activeRequestCleanups.forEach((cleanup) => cleanup());
-    this.activeRequestCleanups.clear();
+    this.activeRequestCleanups.slice().forEach((cleanup) => cleanup());
+    this.activeRequestCleanups = [];
     this.retryTimers.forEach((timer) => window.clearTimeout(timer));
-    this.retryTimers.clear();
+    this.retryTimers = [];
     this.requestQueue = [];
     this.hoardingQueue = {};
     this.requestingNum = 0;
@@ -420,7 +423,8 @@ class Uploader implements UploaderType {
   };
 
   // 请求成功的回调
-  requestSuccessFn = (eventData: any) => this.requestCompleteFn(eventData, true);
+  requestSuccessFn = (eventData: any) =>
+    this.requestCompleteFn(eventData, true);
 
   // 请求失败的回调
   requestFailFn = (
@@ -439,7 +443,7 @@ class Uploader implements UploaderType {
     if (!eventExist && nextReqType) {
       // 延迟800毫秒后再推入请求队列，给网络一点恢复时间
       let t = window.setTimeout(() => {
-        this.retryTimers.delete(t);
+        this.retryTimers = this.retryTimers.filter((timer) => timer !== t);
         if (this.destroyed) {
           return;
         }
@@ -448,7 +452,7 @@ class Uploader implements UploaderType {
         window.clearTimeout(t);
         t = null;
       }, 800);
-      this.retryTimers.add(t);
+      this.retryTimers.push(t);
     } else {
       // 没有下一跳发送方案时，这次请求在客户端视角已经终态结束；
       // 这里同样广播 ON_SEND_AFTER，但 success=false，供上层做失败分支处理。

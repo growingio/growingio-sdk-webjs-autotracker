@@ -316,6 +316,7 @@ class GrowingIO implements GrowingIOType {
       const { trackPage } = this.dataStore.getTrackerVds(trackingId);
       if (!trackPage) {
         const { currentPage } = this.dataStore;
+        currentPage.syncPageIfLocationChanged();
         if (isEmpty(currentPage.pageProps[trackingId])) {
           currentPage.pageProps[trackingId] = {};
         }
@@ -360,6 +361,7 @@ class GrowingIO implements GrowingIOType {
     try {
       if (!isEmpty(this.dataStore.currentPage.pageProps[trackingId])) {
         const { currentPage } = this.dataStore;
+        currentPage.syncPageIfLocationChanged();
         if (isArray(properties) && !isEmpty(properties)) {
           properties.forEach((propName: string) => {
             unset(
@@ -386,6 +388,7 @@ class GrowingIO implements GrowingIOType {
   ) => {
     const { trackPage } = this.dataStore.getTrackerVds(trackingId);
     if (!trackPage) {
+      this.dataStore.currentPage.syncPageIfLocationChanged();
       this.dataStore.currentPage.buildPageEvent(trackingId, props);
       niceCallback(callback);
     } else {

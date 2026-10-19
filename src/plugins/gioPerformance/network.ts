@@ -52,16 +52,19 @@ export default class Network {
   private originGenerateURL: any;
   private hookedGenerateURL: any;
   private gdpRequestURL: string;
+  private destroyed = false;
+  private xhrRequests: Record<string, any> = {};
   constructor(
     public growingIO: GrowingIOType,
     public options: boolean | any
   ) {
     this.buildNetworkEvent = (attributes: any) => {
       // 关闭请求监控则不发送网络事件
-      if (options.network === false) {
+      if (this.destroyed || options.network === false) {
         return;
       }
       window.setTimeout(() => {
+        if (this.destroyed) return;
         const { duration, url, method, status } = attributes;
         this.growingIO.plugins.gioPerformance?.buildPerfEvent(
           'apm_network_request',
@@ -149,12 +152,13 @@ export default class Network {
   hookXHR = () => {
     const self = this;
     const originXHRProto = XMLHttpRequest.prototype;
-    let gioXHR: any = {};
+    const gioXHR = this.xhrRequests;
     this.originXHROpen = originXHRProto.open;
     this.hookedXHROpen = function (
       this: GioXMLHttpRequest,
       ...args: any[]
     ): void {
+      if (self.destroyed) return self.originXHROpen.apply(this, args);
       this.gio_XHR_id = guid();
       // 校验过滤url
       if (!self.verifyUrl(args[1])) {
@@ -172,6 +176,7 @@ export default class Network {
       this: GioXMLHttpRequest,
       ...args: any[]
     ): void {
+      if (self.destroyed) return self.originXHRSend.apply(this, args);
       // 在请求内部也进行时长的统计
       this.addEventListener('loadend', (event: any) => {
         if (this.gio_XHR_id && gioXHR[this.gio_XHR_id]) {
@@ -206,6 +211,7 @@ export default class Network {
     if (window.fetch) {
       this.originFetch = window.fetch;
       this.hookedFetch = function (...args): Promise<Response> {
+        if (self.destroyed) return self.originFetch.apply(this, args);
         const input = args[0];
         const config = args[1];
         let url = '';
@@ -260,7 +266,7 @@ export default class Network {
   // 构建错误事件
   buildErrorEvent = (errorAttributes: any) => {
     // 关闭错误监控则不发送错误事件
-    if (!this.options.exception) {
+    if (this.destroyed || !this.options.exception) {
       return;
     }
     const {
@@ -280,6 +286,10 @@ export default class Network {
 
   // 销毁恢复原方法
   destroy = () => {
+    this.destroyed = true;
+    Object.keys(this.xhrRequests).forEach((key) =>
+      unset(this.xhrRequests, key)
+    );
     const xhrPrototype = window.XMLHttpRequest?.prototype;
     if (xhrPrototype?.open === this.hookedXHROpen) {
       xhrPrototype.open = this.originXHROpen;

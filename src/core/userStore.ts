@@ -4,6 +4,7 @@ import { GrowingIOType } from '@/types/internal/growingIO';
 import { UserStoreType } from '@/types/internal/userStore';
 import { find } from '@/utils/glodash';
 import { guid } from '@/utils/tools';
+import WebFirstDeviceSessions from './firstDeviceSession';
 
 /**
  * 代码中与3.0测量协议字段对应关系
@@ -22,12 +23,15 @@ class UserStore implements UserStoreType {
   public prevIds: any;
   // 最近的一个uid
   private prevUId: string;
+  private firstDeviceSessions: WebFirstDeviceSessions;
   constructor(public growingIO: GrowingIOType) {
     this.prevIds = {};
+    this.firstDeviceSessions = new WebFirstDeviceSessions(growingIO);
     this.growingIO.emitter.on(
       EMIT_MSG.OPTION_INITIALIZED,
       ({ trackingId, growingIO }) => {
         this.transferStorage(trackingId, growingIO);
+        this.firstDeviceSessions.record(trackingId);
       }
     );
   }
@@ -38,7 +42,7 @@ class UserStore implements UserStoreType {
     const storageUId = storage.getItem(uidStorageName);
     if (!storageUId) {
       const uid = guid();
-      this.setUid(uid);
+      this.updateUid(uid, true);
       return uid;
     } else {
       return storageUId;
@@ -46,10 +50,13 @@ class UserStore implements UserStoreType {
   };
 
   // 设置设备Id
-  setUid = (uId: string) => {
+  setUid = (uId: string) => this.updateUid(uId, false);
+
+  private updateUid = (uId: string, generated: boolean) => {
     const { storage } = this.growingIO;
     const prevId = storage.getItem(uidStorageName) || this.prevUId;
     storage.setItem(uidStorageName, uId);
+    this.firstDeviceSessions.updateDevice(prevId, uId, generated);
     // 广播通知访问用户Id变更
     if (prevId !== uId) {
       this.growingIO.emitter?.emit(EMIT_MSG.UID_UPDATE, {
@@ -68,6 +75,10 @@ class UserStore implements UserStoreType {
   getPrevSessionId = (trackingId: string) => {
     return this.prevIds[trackingId]?.sessionId;
   };
+
+  /** 查询没有创建 session 的副作用；调用方显式提供本次使用的 session。 */
+  isFirstDeviceSession = (trackingId: string, sessionId: string) =>
+    this.firstDeviceSessions.isFirst(trackingId, sessionId);
 
   // 获取sessionId
   getSessionId = (trackingId: string) => {
@@ -99,6 +110,8 @@ class UserStore implements UserStoreType {
       sId,
       +Date.now() + sessionExpires * 60 * 1000
     );
+    // 在 SESSIONID_UPDATE 的同步业务回调前记录；已知旧 session 时不能把 S2 记为 S1。
+    this.firstDeviceSessions.updateSession(trackingId, prevId, sId);
     if (prevId !== sId) {
       // sessionId变更时，移除cookie中所有旧的以sessionId作为key的项
       const keys = storage

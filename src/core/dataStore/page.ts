@@ -25,6 +25,9 @@ class Page implements PageType {
   public pageListeners: any;
   // 页面属性(下一次发page事件[sendPage或自动page]时取用即删除)
   public pageProps: any;
+  // 上次解析时的地址；lastHref 记录的是上次构建 PAGE 时的地址，不能混用。
+  private parsedHref: string;
+  private parsedNoHashHref: string;
   private historyPushState: any;
   private historyReplaceState: any;
   private hookedPushState: any;
@@ -70,6 +73,18 @@ class Page implements PageType {
     // 移除开头的拼接符
     if (this.query && includes(['?', '&'], this.query.charAt(0))) {
       this.query = this.query.slice(1);
+    }
+    this.parsedHref = window.location.href;
+    this.parsedNoHashHref = this._getNoHashHref();
+  };
+
+  // 业务可能先于 SDK 路由监听调用页面接口；仅在地址尚未解析时补解析。
+  syncPageIfLocationChanged = () => {
+    const { hashtag } = this.growingIO.vdsConfig;
+    const nowHref = hashtag ? window.location.href : this._getNoHashHref();
+    const parsedHref = hashtag ? this.parsedHref : this.parsedNoHashHref;
+    if (parsedHref !== nowHref) {
+      this.parsePage();
     }
   };
 

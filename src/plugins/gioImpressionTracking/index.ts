@@ -29,6 +29,7 @@ export default class GioImpressionTracking {
   private intersectionObserver: any;
   private documentReady = false;
   private sentImps: any;
+  private destroyed = false;
   private onDocumentReady = () => {
     if (document.readyState === 'complete') {
       this.main('listener');
@@ -69,7 +70,11 @@ export default class GioImpressionTracking {
 
   // 监听的初始化（先确保页面和sdk都初始化好了，两个的初始化监听都只执行一次）
   main = (msgType: 'listener' | 'emitter' | 'manual') => {
-    if (!window.IntersectionObserver || !window.MutationObserver) {
+    if (
+      this.destroyed ||
+      !window.IntersectionObserver ||
+      !window.MutationObserver
+    ) {
       return;
     }
     if (includes(['listener', 'manual'], msgType)) {
@@ -96,6 +101,7 @@ export default class GioImpressionTracking {
       this.growingIO.vdsConfig?.impressionScale || 0.0000000000001;
     this.intersectionObserver = new IntersectionObserver(
       (entries) => {
+        if (this.destroyed) return;
         if (!isEmpty(entries)) {
           entries.map((entry: any) => {
             const { dataset, id } = entry.target;
@@ -158,6 +164,7 @@ export default class GioImpressionTracking {
     });
     // 动态设置的监听
     this.mutationObserver = new MutationObserver((mutationList: any[]) => {
+      if (this.destroyed) return;
       mutationList.map((mutRecord: any) => {
         // 给节点动态加属性
         if (mutRecord.type === 'attributes') {
@@ -205,6 +212,7 @@ export default class GioImpressionTracking {
   };
 
   destroy = () => {
+    this.destroyed = true;
     document.removeEventListener(
       'readystatechange',
       this.onDocumentReady,
@@ -255,7 +263,7 @@ export default class GioImpressionTracking {
     // 校验eventName
     if (
       !EVENT_NAME_REG.test(data.eventName) ||
-      Number.isInteger(Number(head(data.eventName.split(''))))
+      Number(head(data.eventName.split(''))) % 1 === 0
     ) {
       data.eventName = null;
       data = {};

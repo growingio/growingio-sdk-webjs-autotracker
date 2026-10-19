@@ -58,7 +58,7 @@ export const DEFAULT_SETTINGS = {
   gtouchHost: { type: 'string', default: '' },
   // 是否开启哈希路由地址解析；多实例时仅主实例生效
   hashtag: { type: 'boolean', default: false },
-  // 数据上报忽略字段（通用配置，会忽略事件context中的指定字段）
+  // 数据上报忽略字段，仅支持 screenHeight 和 screenWidth
   ignoreFields: { type: 'array', default: [] },
   // 曝光比例
   impressionScale: { type: 'number', default: 0 },
@@ -166,3 +166,14 @@ export const DEPRECATED_HANDLERS = [
 
 // 允许忽略的上报字段
 export const IGNORE_PARAMS: string[] = ['screenHeight', 'screenWidth'];
+
+// 小程序打通的身份、采集开关和圈选字段不可排除继承。
+export const EMBEDDED_REQUIRED_FIELDS = [
+  'dataSourceId',
+  'dataCollect',
+  'deviceId',
+  'sessionId',
+  'userId',
+  'userKey',
+  'circleRoomId'
+];

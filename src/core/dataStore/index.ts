@@ -1,6 +1,7 @@
 import {
   ALLOW_SET_OPTIONS,
   DEFAULT_SETTINGS,
+  IGNORE_PARAMS,
   PLATFORM,
   STORAGE_KEYS
 } from '@/constants/config';
@@ -32,6 +33,8 @@ import { DataStoreType, StorageKeyType } from '@/types/internal/dataStore';
 import { GrowingIOType } from '@/types/internal/growingIO';
 import { StorageType } from '@/types/internal/storage';
 import EMIT_MSG from '@/constants/emitMsg';
+import { EventIdentitySnapshot } from '@/types/internal/events';
+import { finalizeEventContext } from './eventContext';
 import EventContextBuilder from './eventContextBuilder';
 import Page from './page';
 import PageType from '@/types/internal/page';
@@ -247,11 +250,17 @@ class DataStore implements DataStoreType {
       }
       if (invalid) {
         configs[k] = DEFAULT_SETTINGS[k].default;
+      } else if (k === 'ignoreFields') {
+        configs.ignoreFields = userOptions.ignoreFields.filter(
+          (field: string) => includes(IGNORE_PARAMS, field)
+        );
       } else if (k === 'embeddedAdapter') {
         // 深拷贝embeddedAdapter，兼容未传场景
         configs.embeddedAdapter = isObject(userOptions?.embeddedAdapter)
           ? JSON.parse(JSON.stringify(userOptions.embeddedAdapter))
-          : JSON.parse(JSON.stringify(DEFAULT_SETTINGS.embeddedAdapter.default));
+          : JSON.parse(
+              JSON.stringify(DEFAULT_SETTINGS.embeddedAdapter.default)
+            );
       } else {
         configs[k] = userOptions[k];
         if (includes(['dataCollect', 'autotrack'], k) && !configs[k]) {
@@ -316,10 +325,7 @@ class DataStore implements DataStoreType {
 
   // 保存初始来源信息
   setOriginalSource = (trackingId: string) => {
-    const {
-      userStore,
-      storage
-    } = this.growingIO;
+    const { userStore, storage } = this.growingIO;
     const originalSourceKey = this.getStorageKey(trackingId, 'originalSource');
     const prevSentSession = storage.getItem(
       this.getStorageKey(trackingId, 'sentSign')
@@ -363,7 +369,8 @@ class DataStore implements DataStoreType {
     emitter?.emit(EMIT_MSG.OPTION_CHANGE, {
       trackingId,
       optionName: k,
-      optionValue: v
+      optionValue: v,
+      previousValue: prevConfig[k]
     });
   };
 
@@ -495,11 +502,14 @@ class DataStore implements DataStoreType {
   };
 
   // 事件的格式转换(同时移除无值的字段)
-  eventConverter = (event: any) => {
+  eventConverter = (event: any, identity?: EventIdentitySnapshot) => {
     const { uploader } = this.growingIO;
-    const { dataCollect } = this.getTrackerVds(event.trackingId);
+    const tracker = this.getTrackerVds(event.trackingId);
+    const { dataCollect } = tracker;
     // 开启数据采集时才会处理事件、累计全局计数并将合成的事件提交到请求队列
     if (dataCollect) {
+      // 多实例目标合并后应用显式快照；所有插件都经过同一最终字段规则。
+      finalizeEventContext(event, tracker, identity);
       event.eventSequenceId = this.getGsid(event.trackingId);
       if (event.eventType === 'LOGIN_USER_ATTRIBUTES') {
         //? 在4.0中用户属性事件不再带timezoneOffset和eventSequenceId字段
@@ -559,7 +569,7 @@ class DataStore implements DataStoreType {
       // 提交请求队列
       uploader.commitRequest({
         // VISIT 会提前带入 requestId，其他事件则在这里兜底生成。
-        ...convertedEvent,
+        ...finalizeEventContext(convertedEvent, tracker),
         requestId: convertedEvent.requestId || guid()
       });
     }

@@ -24,7 +24,7 @@ export interface InitOptions {
   dataCollect?: boolean;
   /** 是否开启调试模式，默认为false */
   debug?: boolean;
-  /** 与小程序打通时忽略的字段 */
+  /** @deprecated 不继承的小程序字段名，与 embeddedAdapter.ignoreFields 的字段限制相同；新配置优先。 */
   embeddedIgnore?: string[];
   /** 与小程序打通时的配置项 */
   embeddedAdapter?: {
@@ -32,8 +32,14 @@ export interface InitOptions {
     circleServerUrl?: string;
     /** 与小程序打通时是否重写参数，默认为true */
     rewriteQuery?: boolean;
-    /** 数据上报忽略字段（嵌入适配专用） */
+    /**
+     * 不继承的小程序字段名（如 domain、platform、language）；保留 Web 值。
+     * dataSourceId、dataCollect、deviceId、sessionId、userId、userKey、circleRoomId 不可忽略。
+     * 优先于 embeddedIgnore，空数组也覆盖旧配置。
+     */
     ignoreFields?: string[];
+    /** 默认为false。开启后仅在小程序环境中打通，不改写 Web 用户存储；事件仍使用传入字段。 */
+    strict?: boolean;
   };
   /** 是否开启增强型UA，默认为true */
   extraUA?: boolean;
@@ -45,7 +51,7 @@ export interface InitOptions {
   gtouchHost?: string;
   /** 是否开启哈希路由地址解析，默认为false */
   hashtag?: boolean;
-  /** 数据上报忽略字段（通用配置） */
+  /** 不上报的屏幕字段，仅支持 screenHeight、screenWidth。 */
   ignoreFields?: string[];
   /** 曝光比例 */
   impressionScale?: number;

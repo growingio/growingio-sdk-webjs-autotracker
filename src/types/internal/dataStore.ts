@@ -1,4 +1,4 @@
-import { SEND_AFTER_EVENT } from './events';
+import { EventIdentitySnapshot, SEND_AFTER_EVENT } from './events';
 import PageType from './page';
 import { StorageType } from './storage';
 
@@ -26,7 +26,7 @@ export interface UserOptions {
   /** 是否开启调试模式，默认为false */
   debug?: boolean;
 
-  /** 与小程序打通时忽略的字段 */
+  /** @deprecated 不继承的小程序字段名，与 embeddedAdapter.ignoreFields 的字段限制相同；新配置优先。 */
   embeddedIgnore?: string[];
 
   /** 与小程序打通时的配置项 */
@@ -35,9 +35,13 @@ export interface UserOptions {
     circleServerUrl?: string;
     /** 与小程序做打通操作时是否重写参数，默认为true */
     rewriteQuery?: boolean;
-    /** 数据上报忽略字段 */
+    /**
+     * 不继承的小程序字段名；保留 Web 值。
+     * dataSourceId、dataCollect、deviceId、sessionId、userId、userKey、circleRoomId 不可忽略。
+     * 优先于 embeddedIgnore，空数组也覆盖旧配置。
+     */
     ignoreFields?: string[];
-    /** 是否开启严格模式，默认为false。开启后仅在小程序环境中打通，且强制不重写用户信息 */
+    /** 默认为false。开启后仅在小程序环境中打通，不改写 Web 用户存储；事件仍使用传入字段。 */
     strict?: boolean;
   };
 
@@ -56,7 +60,7 @@ export interface UserOptions {
   /** 是否开启哈希路由地址解析，默认为false */
   hashtag?: boolean;
 
-  /** 数据上报忽略字段（通用配置） */
+  /** 不上报的屏幕字段，仅支持 screenHeight、screenWidth。 */
   ignoreFields?: string[];
 
   /** 曝光比例 */
@@ -316,7 +320,7 @@ export interface DataStoreType {
    * 事件转换器（可选）
    * @param event 事件对象
    */
-  eventConverter?: (event: any) => void;
+  eventConverter?: (event: any, identity?: EventIdentitySnapshot) => void;
 
   /** 最后一个页面事件（可选） */
   lastPageEvent?: any;

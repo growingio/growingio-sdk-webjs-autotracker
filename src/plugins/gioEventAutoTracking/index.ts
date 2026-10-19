@@ -2,7 +2,7 @@ import { addListener } from '@/utils/tools';
 import { GioWebNode } from 'gio-web-nodes-parser';
 import { GIOWEBNODE, GIOWEBNODEINFO } from 'gio-web-nodes-parser/build/typings';
 import { GrowingIOType } from '@/types/internal/growingIO';
-import { isEmpty, last } from '@/utils/glodash';
+import { includes, isEmpty, last } from '@/utils/glodash';
 import EMIT_MSG from '@/constants/emitMsg';
 /**
  * 名称：无埋点插件
@@ -108,9 +108,9 @@ class TouchHandler {
       : ['mouseup', 'mouseleave'];
     const moveEvents = this.hasTouch ? ['touchmove'] : ['mousemove'];
     [...startEvents, ...moveEvents, ...stopEvents].forEach((event) => {
-      const handler = startEvents.includes(event)
+      const handler = includes(startEvents, event)
         ? this.touchStartHandler
-        : moveEvents.includes(event)
+        : includes(moveEvents, event)
           ? this.touchMoveHandler
           : this.touchStopHandler;
       window.removeEventListener(event, handler, true);
